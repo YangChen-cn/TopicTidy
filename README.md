@@ -23,7 +23,7 @@ downloads-organizer semantic status
 downloads-organizer semantic prepare
 ```
 
-这两个命令都不会访问网络。系统按文档主要语言选择 Apple embedding；不同语言向量空间不会互相计算余弦相似度，跨语言文件仍使用课程号、文件名、正文词元和来源 URL 等证据。
+这两个命令都不会访问网络。系统按文档主要语言选择 Apple embedding；不同语言向量空间不会互相计算余弦相似度。如果某种语言的系统资产尚未存在，TopicTidy 不会代为下载，而是跳过该文件的语义向量。跨语言文件和缺少系统资产的文件仍使用课程号、文件名、正文词元和来源 URL 等证据。
 
 ## 使用
 

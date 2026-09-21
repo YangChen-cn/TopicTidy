@@ -4,7 +4,7 @@
 
 SQLite 使用 WAL 和外键，当前 schema 版本为 3。`files` 保存当前文件身份，`features` 以指纹和具体 extractor 版本缓存文本、语义向量及其语言空间，`topics.topic_key` 是稳定内部身份，`topics.display_name` 是可修改名称。`plans` 与 `plan_members` 保存不可隐式执行的方案快照及结构化证据，`operation_batches` 与 `operation_logs` 保存每次操作的文件级意图和结果，`associations` 通过 `topic_key` 保存人工确认关系。项目尚未进入用户阶段，因此 schema 不做向后迁移；版本不匹配时重建测试数据库。
 
-语义层使用 `SemanticEncoder` 接口。默认实现通过约 100 KB 的 Swift helper 调用 macOS `NLEmbedding.sentenceEmbedding`，不安装 Python ML 框架、不下载模型、不访问网络。helper 对长文本均匀抽样分块并归一化平均。语言识别结果作为 `embedding_space` 保存；只有空间相同的向量才计算余弦相似度。
+语义层使用 `SemanticEncoder` 接口。默认实现通过约 100 KB 的 Swift helper 调用 macOS `NLEmbedding.sentenceEmbedding`，不安装 Python ML 框架、不下载模型、不访问网络。helper 对长文本均匀抽样分块并归一化平均。语言识别结果作为 `embedding_space` 保存；只有空间相同的向量才计算余弦相似度。若系统没有预装某种语言的 embedding 资产，helper 返回空向量，聚类继续使用其他证据，且不会触发资产下载。
 
 PDF extractor 只访问采样页。少量页面全部读取；大型文档选择前三页、25%/50%/75% 代表页和最后两页。前部页面获得更高字符预算，同时为中部和尾部预留空间，总文本不超过 `max_chars`。
 
