@@ -29,7 +29,7 @@ dev = ["hatchling==1.27.0", "pytest==8.4.2"]
 
 [project.scripts]
 downloads-organizer = "downloads_organizer.cli:app"
-tidy = "downloads_organizer.cli:app"
+tt = "downloads_organizer.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/downloads_organizer"]

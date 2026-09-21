@@ -16,11 +16,13 @@ python -m pip install -e .
 
 这是完整的运行安装，不会安装 PyTorch、Transformers 或 sentence-transformers，也不会下载模型。语义特征使用 macOS 自带的 NaturalLanguage sentence embedding。首次执行 `propose` 时只会在本机编译一个约 100 KB 的 Swift helper，因此需要 Xcode Command Line Tools。
 
+命令行简称为 `tt`（TopicTidy）；同时保留 `downloads-organizer` 兼容入口。macOS 自带的 `tidy` 是另一个 HTML 工具，请勿将它用于本项目。
+
 可以提前检查和准备原生 backend：
 
 ```bash
-tidy semantic status
-tidy semantic prepare
+tt semantic status
+tt semantic prepare
 ```
 
 这两个命令都不会访问网络。系统按文档主要语言选择 Apple embedding；不同语言向量空间不会互相计算余弦相似度。如果某种语言的系统资产尚未存在，TopicTidy 不会代为下载，而是跳过该文件的语义向量。跨语言文件和缺少系统资产的文件仍使用课程号、文件名、正文词元和来源 URL 等证据。
@@ -28,13 +30,13 @@ tidy semantic prepare
 ## 使用
 
 ```bash
-tidy scan
-tidy propose
-tidy review 1
-tidy apply 1
-tidy history
-tidy undo 1
-tidy benchmark
+tt scan
+tt propose
+tt review 1
+tt apply 1
+tt history
+tt undo 1
+tt benchmark
 ```
 
 `scan` 只读取 Downloads 顶层文件。它忽略目录、符号链接、隐藏文件、`Organized` 和 `.crdownload`、`.download`、`.part`、`.tmp` 等未完成下载。支持 PDF、DOCX、PPTX、TXT 和 Markdown 文本提取；扫描件不做 OCR。提取器通过注册表插拔，扫描器不依赖具体文档库。大型 PDF 只读取前几页、代表性中间页和末尾页，并在文本预算内停止。
@@ -55,7 +57,7 @@ review: done
 `watch` 使用 macOS FSEvents 前台监控，合并事件并等待文件稳定后更新索引，不会自动移动文件：
 
 ```bash
-tidy watch --interval 300
+tt watch --interval 300
 ```
 
 ## 数据与配置
@@ -76,14 +78,14 @@ export DOWNLOADS_ORGANIZER_HOME=/tmp/demo/state
 ```bash
 python -m pip install -e '.[dev]'
 pytest
-tidy benchmark
+tt benchmark
 ```
 
 benchmark 使用内置标注 fixture，输出 expected clusters、predicted clusters、未分类集合以及 pairwise precision / recall / F1。修改权重或命名算法后应保持默认 benchmark 通过；也可传入自定义 JSON：
 
 ```bash
-tidy benchmark path/to/fixture.json --min-f1 0.95
-tidy benchmark --json
+tt benchmark path/to/fixture.json --min-f1 0.95
+tt benchmark --json
 ```
 
 测试全部使用 pytest 临时目录，不会访问真实 Downloads。`examples/demo-downloads` 提供可复制的演示资料：
@@ -93,10 +95,10 @@ mkdir -p /tmp/organizer-demo/Downloads
 cp examples/demo-downloads/* /tmp/organizer-demo/Downloads/
 DOWNLOADS_ORGANIZER_DOWNLOADS=/tmp/organizer-demo/Downloads \
 DOWNLOADS_ORGANIZER_HOME=/tmp/organizer-demo/state \
-tidy scan
+tt scan
 DOWNLOADS_ORGANIZER_DOWNLOADS=/tmp/organizer-demo/Downloads \
 DOWNLOADS_ORGANIZER_HOME=/tmp/organizer-demo/state \
-tidy propose --no-semantic
+tt propose --no-semantic
 ```
 
 更多实现边界见 [架构说明](docs/ARCHITECTURE.md)。
