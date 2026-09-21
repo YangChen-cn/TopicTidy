@@ -9,6 +9,10 @@ from platformdirs import user_data_dir
 
 APP_NAME = "DownloadsOrganizer"
 COURSE_PATTERN = re.compile(r"(?i)(?<![A-Z0-9])([A-Z]{2,8})[\s_-]?(\d{4})(?!\d)")
+NON_COURSE_PREFIXES = {
+    "AUTUMN", "FALL", "SPRING", "SUMMER", "WINTER", "TERM", "SEMESTER",
+    "LECTURE", "CHAPTER",
+}
 INCOMPLETE_SUFFIXES = {".crdownload", ".download", ".part", ".tmp"}
 
 
@@ -46,9 +50,16 @@ class Settings:
 
 
 def normalize_course(value: str) -> str:
-    match = COURSE_PATTERN.search(value)
-    return f"{match.group(1).upper()}{match.group(2)}" if match else ""
+    for raw_prefix, number in COURSE_PATTERN.findall(value):
+        prefix = raw_prefix.upper()
+        if prefix not in NON_COURSE_PREFIXES:
+            return f"{prefix}{number}"
+    return ""
 
 
 def all_courses(value: str) -> set[str]:
-    return {f"{a.upper()}{n}" for a, n in COURSE_PATTERN.findall(value)}
+    return {
+        f"{prefix}{number}"
+        for raw_prefix, number in COURSE_PATTERN.findall(value)
+        if (prefix := raw_prefix.upper()) not in NON_COURSE_PREFIXES
+    }

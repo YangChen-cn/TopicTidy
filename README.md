@@ -19,8 +19,8 @@ python -m pip install -e .
 可以提前检查和准备原生 backend：
 
 ```bash
-downloads-organizer semantic status
-downloads-organizer semantic prepare
+tidy semantic status
+tidy semantic prepare
 ```
 
 这两个命令都不会访问网络。系统按文档主要语言选择 Apple embedding；不同语言向量空间不会互相计算余弦相似度。如果某种语言的系统资产尚未存在，TopicTidy 不会代为下载，而是跳过该文件的语义向量。跨语言文件和缺少系统资产的文件仍使用课程号、文件名、正文词元和来源 URL 等证据。
@@ -28,13 +28,13 @@ downloads-organizer semantic prepare
 ## 使用
 
 ```bash
-downloads-organizer scan
-downloads-organizer propose
-downloads-organizer review 1
-downloads-organizer apply 1
-downloads-organizer history
-downloads-organizer undo 1
-downloads-organizer benchmark
+tidy scan
+tidy propose
+tidy review 1
+tidy apply 1
+tidy history
+tidy undo 1
+tidy benchmark
 ```
 
 `scan` 只读取 Downloads 顶层文件。它忽略目录、符号链接、隐藏文件、`Organized` 和 `.crdownload`、`.download`、`.part`、`.tmp` 等未完成下载。支持 PDF、DOCX、PPTX、TXT 和 Markdown 文本提取；扫描件不做 OCR。提取器通过注册表插拔，扫描器不依赖具体文档库。大型 PDF 只读取前几页、代表性中间页和末尾页，并在文本预算内停止。
@@ -55,7 +55,7 @@ review: done
 `watch` 使用 macOS FSEvents 前台监控，合并事件并等待文件稳定后更新索引，不会自动移动文件：
 
 ```bash
-downloads-organizer watch --interval 300
+tidy watch --interval 300
 ```
 
 ## 数据与配置
@@ -76,14 +76,14 @@ export DOWNLOADS_ORGANIZER_HOME=/tmp/demo/state
 ```bash
 python -m pip install -e '.[dev]'
 pytest
-downloads-organizer benchmark
+tidy benchmark
 ```
 
 benchmark 使用内置标注 fixture，输出 expected clusters、predicted clusters、未分类集合以及 pairwise precision / recall / F1。修改权重或命名算法后应保持默认 benchmark 通过；也可传入自定义 JSON：
 
 ```bash
-downloads-organizer benchmark path/to/fixture.json --min-f1 0.95
-downloads-organizer benchmark --json
+tidy benchmark path/to/fixture.json --min-f1 0.95
+tidy benchmark --json
 ```
 
 测试全部使用 pytest 临时目录，不会访问真实 Downloads。`examples/demo-downloads` 提供可复制的演示资料：
@@ -93,10 +93,10 @@ mkdir -p /tmp/organizer-demo/Downloads
 cp examples/demo-downloads/* /tmp/organizer-demo/Downloads/
 DOWNLOADS_ORGANIZER_DOWNLOADS=/tmp/organizer-demo/Downloads \
 DOWNLOADS_ORGANIZER_HOME=/tmp/organizer-demo/state \
-downloads-organizer scan
+tidy scan
 DOWNLOADS_ORGANIZER_DOWNLOADS=/tmp/organizer-demo/Downloads \
 DOWNLOADS_ORGANIZER_HOME=/tmp/organizer-demo/state \
-downloads-organizer propose --no-semantic
+tidy propose --no-semantic
 ```
 
 更多实现边界见 [架构说明](docs/ARCHITECTURE.md)。

@@ -38,7 +38,7 @@ Use Python 3.12+ in `.venv` and keep dependencies pinned in `pyproject.toml`.
 source .venv/bin/activate
 python -m pip install -e '.[dev]'
 pytest
-downloads-organizer benchmark
+tidy benchmark
 python -m pip wheel . --no-deps --wheel-dir /tmp/topictidy-wheel-check
 ```
 

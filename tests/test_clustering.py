@@ -64,6 +64,54 @@ def test_body_course_code_groups_files_without_code_in_filename(workspace):
     assert course.strength == "strong"
 
 
+def test_course_code_seen_once_in_each_body_becomes_collective_evidence(workspace):
+    settings, db = workspace
+    put(settings.downloads, "01 Introduction.md", "ELEC7011 Energy Internet systems overview")
+    put(settings.downloads, "02 Renewable Energy.md", "ELEC7011 Energy Internet solar wind generation")
+    scan(db, settings)
+
+    groups, unclassified = cluster(db, settings)
+
+    assert not unclassified
+    assert len(groups) == 1
+    assert groups[0].display_name == "ELEC7011"
+    assert {file.name for file in groups[0].files} == {
+        "01 Introduction.md", "02 Renewable Energy.md",
+    }
+
+
+def test_single_body_course_reference_does_not_classify_a_file(workspace):
+    settings, db = workspace
+    put(settings.downloads, "Introduction.md", "ELEC7011 Energy Internet overview")
+    scan(db, settings)
+
+    groups, unclassified = cluster(db, settings)
+
+    assert not groups
+    assert [file.name for file in unclassified] == ["Introduction.md"]
+
+
+def test_term_and_year_is_not_mistaken_for_course_code(workspace):
+    settings, db = workspace
+    put(settings.downloads, "lec1.md", "ELEC7043 Digital Image Processing Autumn 2026")
+    put(settings.downloads, "lec2.md", "Autumn 2026 Digital Image Processing intensity transformations")
+    scan(db, settings)
+    vector = json.dumps([1.0, 0.0]).encode()
+    db.conn.execute("UPDATE features SET embedding=?,embedding_space='test',model_version='test-fixed'", (vector,))
+    db.conn.execute(
+        "UPDATE files SET source_urls=?",
+        ('["https://moodle.example/course/7043/lecture"]',),
+    )
+    db.conn.commit()
+
+    groups, unclassified = cluster(db, settings)
+
+    assert not unclassified
+    assert len(groups) == 1
+    assert groups[0].display_name == "ELEC7043"
+    assert {file.name for file in groups[0].files} == {"lec1.md", "lec2.md"}
+
+
 def test_generic_shared_domain_is_not_enough_to_cluster(workspace, monkeypatch):
     settings, db = workspace
     put(settings.downloads, "tax receipt.md", "annual personal tax receipt")

@@ -130,7 +130,7 @@ def propose(
                 console.print(f"\n[yellow]原生语义不可用，已继续使用其他特征：{semantic_error}[/yellow]")
             elif encoder is None:
                 console.print("\n[dim]已按要求跳过原生语义特征。[/dim]")
-            console.print(f"\n审阅：downloads-organizer review {plan_id}")
+            console.print(f"\n审阅：tidy review {plan_id}")
     finally:
         db.close()
 
@@ -195,7 +195,7 @@ def review(plan_id: int) -> None:
             if parts[0] in {"done", "quit", "exit"}:
                 db.conn.execute("UPDATE plans SET status='reviewed' WHERE id=?", (plan_id,))
                 db.conn.commit()
-                console.print("审阅已保存。")
+                console.print(f"审阅已保存。下一步执行：tidy apply {plan_id}")
                 break
             if parts[0] in {"help", "?"}:
                 console.print(REVIEW_HELP)

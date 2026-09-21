@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .config import COURSE_PATTERN, Settings, all_courses
+from .config import COURSE_PATTERN, NON_COURSE_PREFIXES, Settings, all_courses
 from .db import Database, dumps, loads
 from .embedding import SemanticEncoder
 from .models import Evidence, IndexedFile, ProposedGroup
@@ -59,9 +59,30 @@ def _primary_course(file: IndexedFile) -> str:
     if len(strong) == 1:
         return next(iter(strong))
     body = COURSE_PATTERN.findall(file.text[:20_000])
-    counts = Counter(f"{prefix.upper()}{number}" for prefix, number in body)
+    counts = Counter(
+        f"{prefix.upper()}{number}"
+        for prefix, number in body
+        if prefix.upper() not in NON_COURSE_PREFIXES
+    )
     repeated = [code for code, count in counts.items() if count >= 2]
     return repeated[0] if len(repeated) == 1 else ""
+
+
+def _body_course_candidates(file: IndexedFile) -> set[str]:
+    """Return course codes found in the representative document text.
+
+    A single body occurrence is deliberately only a candidate.  It becomes
+    strong evidence when another document independently exposes the same code.
+    """
+    return all_courses(" ".join((file.title, file.summary, file.text[:20_000])))
+
+
+def _declared_course(file: IndexedFile) -> str:
+    strong = _primary_course(file)
+    if strong:
+        return strong
+    candidates = _body_course_candidates(file)
+    return next(iter(candidates)) if len(candidates) == 1 else ""
 
 
 def _strength(kind: str, score: float) -> str:
@@ -79,8 +100,10 @@ def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
     content = _jaccard(set(left.keywords), set(right.keywords))
     semantic = _cosine(left.vector, right.vector) if left.vector_space == right.vector_space else 0.0
     source, source_detail = _source_score(left, right)
-    left_course, right_course = _primary_course(left), _primary_course(right)
+    left_primary, right_primary = _primary_course(left), _primary_course(right)
+    left_course, right_course = _declared_course(left), _declared_course(right)
     shared_course = left_course if left_course and left_course == right_course else ""
+    shared_from_body = bool(shared_course and not (left_primary == right_primary == shared_course))
     conflicts: list[str] = []
 
     evidence = [
@@ -88,7 +111,8 @@ def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
             "course_code",
             "strong" if shared_course else "none",
             1.0 if shared_course else 0.0,
-            f"共同课程代码 {shared_course}" if shared_course else "没有共同课程代码",
+            (f"共同正文课程代码 {shared_course}" if shared_from_body else f"共同课程代码 {shared_course}")
+            if shared_course else "没有共同课程代码",
         ),
         Evidence("filename_similarity", _strength("filename", filename), filename, f"文件名相似度 {filename:.2f}"),
         Evidence("content_similarity", _strength("content", content), content, f"正文关键词相似度 {content:.2f}"),
@@ -107,6 +131,8 @@ def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
     if shared_course:
         score = max(score, 0.96)
     if semantic >= 0.82 and content >= 0.20:
+        score = max(score, 0.68)
+    if semantic >= 0.78 and source >= 0.50:
         score = max(score, 0.68)
     return PairAssessment(score, {
         "course_code": 1.0 if shared_course else 0.0,
@@ -229,8 +255,17 @@ def _group_details(files: list[IndexedFile], course_code: str = "") -> tuple[flo
 
 def _new_group(files: list[IndexedFile], *, course_code: str = "") -> ProposedGroup:
     confidence, evidence, conflicts = _group_details(files, course_code)
-    name = display_name(files, course_code)
-    return ProposedGroup(topic_key(files, course_code), name, confidence, files, evidence, conflicts)
+    naming_course = course_code
+    if not naming_course:
+        observed = {code for file in files if (code := _declared_course(file))}
+        if len(observed) == 1:
+            naming_course = next(iter(observed))
+            evidence[0] = Evidence(
+                "course_code", "weak", 0.5,
+                f"组内部分文件发现课程代码 {naming_course}",
+            )
+    name = display_name(files, naming_course)
+    return ProposedGroup(topic_key(files, naming_course), name, confidence, files, evidence, conflicts)
 
 
 def cluster(
@@ -314,6 +349,25 @@ def cluster(
             continue
         code = _primary_course(file)
         if code:
+            course_map.setdefault(code, []).append(file)
+            assigned.add(file.id)
+
+    # A body course code mentioned once cannot classify a document by itself.
+    # Promote it only when at least two independent files expose the same code.
+    body_candidates: dict[int, set[str]] = {}
+    body_counts: Counter[str] = Counter()
+    for file in files:
+        if file.id in assigned:
+            continue
+        candidates = _body_course_candidates(file)
+        body_candidates[file.id] = candidates
+        body_counts.update(candidates)
+    for file in files:
+        if file.id in assigned:
+            continue
+        shared = {code for code in body_candidates[file.id] if body_counts[code] >= 2}
+        if len(shared) == 1:
+            code = next(iter(shared))
             course_map.setdefault(code, []).append(file)
             assigned.add(file.id)
     for file in files:
