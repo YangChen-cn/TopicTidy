@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+import os
+import re
+from dataclasses import dataclass
+from pathlib import Path
+
+from platformdirs import user_data_dir
+
+APP_NAME = "DownloadsOrganizer"
+MODEL_ID = "intfloat/multilingual-e5-small"
+EXTRACTOR_VERSION = "1"
+COURSE_PATTERN = re.compile(r"(?i)(?<![A-Z0-9])([A-Z]{2,8})[\s_-]?(\d{4})(?!\d)")
+INCOMPLETE_SUFFIXES = {".crdownload", ".download", ".part", ".tmp"}
+SUPPORTED_TEXT_SUFFIXES = {".pdf", ".docx", ".pptx", ".txt", ".md", ".markdown"}
+
+
+@dataclass(frozen=True)
+class Settings:
+    downloads: Path
+    data_dir: Path
+    organized_name: str = "Organized"
+    max_text_chars: int = 120_000
+    stable_seconds: float = 2.0
+    cluster_threshold: float = 0.64
+    course_attach_threshold: float = 0.70
+
+    @property
+    def database(self) -> Path:
+        return self.data_dir / "organizer.sqlite3"
+
+    @property
+    def model_dir(self) -> Path:
+        return self.data_dir / "models" / "multilingual-e5-small"
+
+    @property
+    def organized_dir(self) -> Path:
+        return self.downloads / self.organized_name
+
+    @classmethod
+    def load(cls) -> "Settings":
+        downloads = Path(os.getenv("DOWNLOADS_ORGANIZER_DOWNLOADS", "~/Downloads")).expanduser()
+        data = Path(os.getenv("DOWNLOADS_ORGANIZER_HOME", user_data_dir(APP_NAME))).expanduser()
+        return cls(downloads=downloads.resolve(), data_dir=data.resolve())
+
+
+def normalize_course(value: str) -> str:
+    match = COURSE_PATTERN.search(value)
+    return f"{match.group(1).upper()}{match.group(2)}" if match else ""
+
+
+def all_courses(value: str) -> set[str]:
+    return {f"{a.upper()}{n}" for a, n in COURSE_PATTERN.findall(value)}
+
