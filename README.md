@@ -11,18 +11,19 @@ cd /path/to/文件整理器
 python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e '.[model]'
+python -m pip install -e .
 ```
 
-基础安装不包含约 470 MB 的 embedding 运行依赖；若只想先测试课程号和词元规则，可执行 `pip install -e .`。依赖在 `pyproject.toml` 中精确锁定。
+这是完整的运行安装，不会安装 PyTorch、Transformers 或 sentence-transformers，也不会下载模型。语义特征使用 macOS 自带的 NaturalLanguage sentence embedding。首次执行 `propose` 时只会在本机编译一个约 100 KB 的 Swift helper，因此需要 Xcode Command Line Tools。
 
-首次启用语义分类时显式下载模型：
+可以提前检查和准备原生 backend：
 
 ```bash
-downloads-organizer model download
+downloads-organizer semantic status
+downloads-organizer semantic prepare
 ```
 
-下载命令记录 Hugging Face 返回的 commit。此后 `propose` 设置离线环境并只从本地模型目录加载，不会把文件名、正文或向量发送到网络。若需锁定指定 revision，可使用 `--revision <tag-or-commit>`。
+这两个命令都不会访问网络。系统按文档主要语言选择 Apple embedding；不同语言向量空间不会互相计算余弦相似度，跨语言文件仍使用课程号、文件名、正文词元和来源 URL 等证据。
 
 ## 使用
 
@@ -38,7 +39,7 @@ downloads-organizer benchmark
 
 `scan` 只读取 Downloads 顶层文件。它忽略目录、符号链接、隐藏文件、`Organized` 和 `.crdownload`、`.download`、`.part`、`.tmp` 等未完成下载。支持 PDF、DOCX、PPTX、TXT 和 Markdown 文本提取；扫描件不做 OCR。提取器通过注册表插拔，扫描器不依赖具体文档库。大型 PDF 只读取前几页、代表性中间页和末尾页，并在文本预算内停止。
 
-`propose --json` 适合脚本和未来 GUI。每个主题同时包含稳定的 `topic_id`、可修改的 `display_name`，以及 course code、文件名、正文、语义和来源 URL 五类结构化证据。证据区分 `strong`、`weak` 和 `none`。未安装模型时仍能运行，并明确提示语义评分未启用。`propose --no-model` 可主动跳过模型。
+`propose --json` 适合脚本和未来 GUI。每个主题同时包含稳定的 `topic_id`、可修改的 `display_name`，以及 course code、文件名、正文、语义和来源 URL 五类结构化证据。证据区分 `strong`、`weak` 和 `none`。默认启用零下载的 macOS 原生语义 backend；`propose --no-semantic` 可主动跳过语义计算。
 
 `review` 提供 `list`、`rename`、`move`、`split`、`merge`、`exclude` 和 `folder` 命令。含空格的主题名需要使用引号，例如：
 
@@ -59,7 +60,7 @@ downloads-organizer watch --interval 300
 
 ## 数据与配置
 
-SQLite 数据库、模型和进程锁默认保存在 `~/Library/Application Support/DownloadsOrganizer/`。测试或开发时可设置：
+SQLite 数据库、约 100 KB 的原生 helper 和进程锁默认保存在 `~/Library/Application Support/DownloadsOrganizer/`。测试或开发时可设置：
 
 ```bash
 export DOWNLOADS_ORGANIZER_DOWNLOADS=/tmp/demo/Downloads
@@ -95,7 +96,7 @@ DOWNLOADS_ORGANIZER_HOME=/tmp/organizer-demo/state \
 downloads-organizer scan
 DOWNLOADS_ORGANIZER_DOWNLOADS=/tmp/organizer-demo/Downloads \
 DOWNLOADS_ORGANIZER_HOME=/tmp/organizer-demo/state \
-downloads-organizer propose --no-model
+downloads-organizer propose --no-semantic
 ```
 
 更多实现边界见 [架构说明](docs/ARCHITECTURE.md)。

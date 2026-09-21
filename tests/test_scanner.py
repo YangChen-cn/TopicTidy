@@ -32,6 +32,27 @@ def test_corrupt_pdf_does_not_stop_scan(workspace):
     assert len(errors) == 1
 
 
+def test_changed_file_clears_cached_embedding_and_language_space(workspace):
+    settings, db = workspace
+    path = put(settings.downloads, "notes.md", "first version")
+    scan(db, settings)
+    db.conn.execute(
+        "UPDATE features SET embedding=?,embedding_space='en',model_version='old'",
+        (b"[1.0,0.0]",),
+    )
+    db.conn.commit()
+    path.write_text("second version with new content", encoding="utf-8")
+
+    scan(db, settings)
+
+    feature = db.conn.execute(
+        "SELECT embedding,embedding_space,model_version FROM features"
+    ).fetchone()
+    assert feature["embedding"] is None
+    assert feature["embedding_space"] is None
+    assert feature["model_version"] is None
+
+
 def test_interrupted_move_recovery_updates_file_location(workspace):
     settings, db = workspace
     source = put(settings.downloads, "recover.md", "recover me")

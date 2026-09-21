@@ -15,14 +15,14 @@ from .clustering import cluster, save_plan
 from .benchmark import run_benchmark
 from .config import Settings
 from .db import Database, loads
-from .embedding import LocalEncoder, download_model
+from .embedding import NativeMacOSEncoder, native_status
 from .locking import app_lock
 from .operations import apply_plan, edit_plan, plan_rows, preview_moves, undo_batch
 from .scanner import scan as run_scan
 
 app = typer.Typer(help="本地、可解释、可撤销的 macOS Downloads 整理器", no_args_is_help=True)
-model_app = typer.Typer(help="管理离线语义模型")
-app.add_typer(model_app, name="model")
+semantic_app = typer.Typer(help="管理零下载的 macOS 原生语义 backend")
+app.add_typer(semantic_app, name="semantic")
 console = Console()
 
 
@@ -35,14 +35,24 @@ def _open() -> tuple[Settings, Database]:
     return settings, db
 
 
-@model_app.command("download")
-def model_download(revision: str = typer.Option("main", help="Hugging Face revision；解析后会锁定 commit")) -> None:
-    """显式下载模型并记录不可变的解析版本。"""
+@semantic_app.command("status")
+def semantic_status() -> None:
+    """检查系统原生语义能力；不会下载任何内容。"""
+    settings = Settings.load()
+    typer.echo(json.dumps(native_status(settings), ensure_ascii=False, indent=2))
+
+
+@semantic_app.command("prepare")
+def semantic_prepare() -> None:
+    """编译轻量原生 helper；使用系统模型，不访问网络。"""
     settings = Settings.load()
     with app_lock(settings.data_dir):
-        manifest = download_model(settings, revision)
-    console.print(f"模型已保存到 {settings.model_dir}")
-    console.print(f"锁定版本：{manifest['resolved_revision']}")
+        encoder = NativeMacOSEncoder(settings)
+        vectors = encoder.encode(["renewable energy systems", "power grid control"])
+    size = settings.native_helper.stat().st_size
+    console.print(f"原生语义 backend 已就绪：{settings.native_helper}")
+    console.print(f"helper 大小：{size / 1024:.0f} KB；系统向量维度：{len(vectors[0].vector or [])}")
+    console.print("未下载模型或 Python ML 框架。")
 
 
 @app.command()
@@ -88,14 +98,20 @@ def _render_plan(db: Database, settings: Settings, plan_id: int) -> None:
 @app.command()
 def propose(
     json_output: bool = typer.Option(False, "--json", help="输出机器可读 JSON"),
-    no_model: bool = typer.Option(False, help="即使已下载模型也跳过语义向量"),
+    no_semantic: bool = typer.Option(
+        False, "--no-semantic", help="跳过 macOS 原生语义向量",
+    ),
 ) -> None:
     """基于当前索引生成并保存整理建议。"""
     settings, db = _open()
     try:
         encoder = None
-        if not no_model and (settings.model_dir / "organizer-model.json").exists():
-            encoder = LocalEncoder(settings)
+        semantic_error = None
+        if not no_semantic:
+            try:
+                encoder = NativeMacOSEncoder(settings)
+            except RuntimeError as exc:
+                semantic_error = str(exc)
         with app_lock(settings.data_dir):
             groups, unclassified = cluster(db, settings, encoder=encoder)
             plan_id = save_plan(db, settings, groups, unclassified)
@@ -104,13 +120,16 @@ def propose(
                 "plan_id": plan_id,
                 "groups": [group.as_dict(settings.organized_dir) for group in groups],
                 "unclassified": [str(file.path) for file in unclassified],
-                "semantic_model_used": encoder.version if encoder else None,
+                "semantic_backend_used": encoder.version if encoder else None,
+                "semantic_error": semantic_error,
             }
             typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
             _render_plan(db, settings, plan_id)
-            if encoder is None:
-                console.print("\n[yellow]未使用语义模型；运行 model download 可启用离线语义相似度。[/yellow]")
+            if semantic_error:
+                console.print(f"\n[yellow]原生语义不可用，已继续使用其他特征：{semantic_error}[/yellow]")
+            elif encoder is None:
+                console.print("\n[dim]已按要求跳过原生语义特征。[/dim]")
             console.print(f"\n审阅：downloads-organizer review {plan_id}")
     finally:
         db.close()

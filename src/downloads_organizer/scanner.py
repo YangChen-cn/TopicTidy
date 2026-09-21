@@ -91,7 +91,8 @@ def scan(
                         VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(file_id) DO UPDATE SET
                         fingerprint=excluded.fingerprint,extractor_version=excluded.extractor_version,model_version=NULL,
                         text=excluded.text,title=excluded.title,keywords=excluded.keywords,summary=excluded.summary,
-                        truncated=excluded.truncated,extraction_error=excluded.extraction_error,embedding=NULL""",
+                        truncated=excluded.truncated,extraction_error=excluded.extraction_error,
+                        embedding=NULL,embedding_space=NULL""",
                         (file_id, digest, extractor_version, result.text, result.title, dumps(result.keywords),
                          result.summary, int(result.truncated), result.error),
                     )

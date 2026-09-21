@@ -1,72 +1,115 @@
 from __future__ import annotations
 
+import hashlib
 import json
-import math
 import os
+import platform
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from importlib.resources import files as resource_files
 from pathlib import Path
+from typing import Protocol
 
-from .config import MODEL_ID, Settings
-
-
-def download_model(settings: Settings, revision: str = "main") -> dict[str, str]:
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError as exc:
-        raise RuntimeError("请先安装模型依赖：pip install 'downloads-organizer[model]'") from exc
-    settings.model_dir.parent.mkdir(parents=True, exist_ok=True)
-    resolved = snapshot_download(repo_id=MODEL_ID, revision=revision, local_dir=settings.model_dir)
-    commit = Path(resolved).resolve().name if "snapshots" in str(resolved) else revision
-    try:
-        from huggingface_hub import HfApi
-        commit = HfApi().model_info(MODEL_ID, revision=revision).sha
-    except Exception:
-        pass
-    manifest = {"model_id": MODEL_ID, "requested_revision": revision, "resolved_revision": commit}
-    (settings.model_dir / "organizer-model.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    return manifest
+from .config import Settings
 
 
-class LocalEncoder:
-    def __init__(self, settings: Settings):
-        manifest_path = settings.model_dir / "organizer-model.json"
-        if not manifest_path.exists():
-            raise RuntimeError("本地模型尚未安装；运行 downloads-organizer model download")
-        self.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        os.environ["HF_HUB_OFFLINE"] = "1"
-        os.environ["TRANSFORMERS_OFFLINE"] = "1"
-        try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError as exc:
-            raise RuntimeError("请先安装模型依赖：pip install 'downloads-organizer[model]'") from exc
-        self.model = SentenceTransformer(str(settings.model_dir), local_files_only=True)
+@dataclass(frozen=True)
+class EncodedVector:
+    vector: list[float] | None
+    space: str | None
+
+
+class SemanticEncoder(Protocol):
+    @property
+    def version(self) -> str: ...
+
+    def encode(self, texts: list[str]) -> list[EncodedVector]: ...
+
+
+def _source_path() -> Path:
+    return Path(str(resource_files("downloads_organizer.native").joinpath("embedding.swift")))
+
+
+class NativeMacOSEncoder:
+    """Offline sentence embeddings backed by macOS NaturalLanguage."""
+
+    def __init__(self, settings: Settings, *, prepare: bool = True):
+        if sys.platform != "darwin":
+            raise RuntimeError("原生语义 backend 仅支持 macOS")
+        self.settings = settings
+        self.source = _source_path()
+        self.source_digest = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        if prepare:
+            self.prepare()
 
     @property
     def version(self) -> str:
-        return str(self.manifest["resolved_revision"])
+        release = platform.mac_ver()[0] or "unknown"
+        return f"apple-nlembedding:{release}:{self.source_digest[:12]}"
 
-    def encode(self, texts: list[str]) -> list[list[float]]:
+    def is_prepared(self) -> bool:
+        stamp = self.settings.native_helper_stamp
+        return (
+            self.settings.native_helper.is_file()
+            and os.access(self.settings.native_helper, os.X_OK)
+            and stamp.is_file()
+            and stamp.read_text(encoding="utf-8").strip() == self.source_digest
+        )
+
+    def prepare(self) -> Path:
+        if self.is_prepared():
+            return self.settings.native_helper
+        if not shutil.which("xcrun"):
+            raise RuntimeError("未找到 xcrun；请安装 Xcode Command Line Tools")
+        self.settings.native_helper.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.settings.native_helper.with_name(f"native-embedding.tmp-{os.getpid()}")
+        command = [
+            "xcrun", "swiftc", "-O", str(self.source),
+            "-framework", "NaturalLanguage", "-o", str(temporary),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=180)
+            os.chmod(temporary, 0o755)
+            os.replace(temporary, self.settings.native_helper)
+            self.settings.native_helper_stamp.write_text(self.source_digest, encoding="utf-8")
+        except (OSError, subprocess.SubprocessError) as exc:
+            temporary.unlink(missing_ok=True)
+            detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) and exc.stderr else str(exc)
+            raise RuntimeError(f"无法构建 macOS 原生语义 helper：{detail}") from exc
+        return self.settings.native_helper
+
+    def encode(self, texts: list[str]) -> list[EncodedVector]:
         if not texts:
             return []
-        prepared: list[str] = []
-        owners: list[int] = []
-        for owner, text in enumerate(texts):
-            chunks = [text[index:index + 2_000] for index in range(0, len(text), 2_000)] or [""]
-            if len(chunks) > 32:
-                step = (len(chunks) - 1) / 31
-                chunks = [chunks[round(index * step)] for index in range(32)]
-            prepared.extend("passage: " + chunk for chunk in chunks)
-            owners.extend([owner] * len(chunks))
-        chunk_vectors = self.model.encode(prepared, normalize_embeddings=True, show_progress_bar=False)
-        dimensions = len(chunk_vectors[0])
-        sums = [[0.0] * dimensions for _ in texts]
-        counts = [0] * len(texts)
-        for owner, vector in zip(owners, chunk_vectors):
-            counts[owner] += 1
-            for index, value in enumerate(vector):
-                sums[owner][index] += float(value)
-        results = []
-        for values, count in zip(sums, counts):
-            averaged = [value / count for value in values]
-            norm = math.sqrt(sum(value * value for value in averaged)) or 1.0
-            results.append([value / norm for value in averaged])
-        return results
+        request = json.dumps({"texts": texts}, ensure_ascii=False).encode("utf-8")
+        try:
+            result = subprocess.run(
+                [str(self.prepare())], input=request, check=True, capture_output=True, timeout=180,
+            )
+            payload = json.loads(result.stdout)
+        except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+            detail = ""
+            if isinstance(exc, subprocess.CalledProcessError) and exc.stderr:
+                detail = exc.stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f"macOS 原生语义编码失败：{detail or exc}") from exc
+        vectors = payload.get("vectors")
+        if not isinstance(vectors, list) or len(vectors) != len(texts):
+            raise RuntimeError("macOS 原生语义 helper 返回了无效结果")
+        languages = payload.get("languages")
+        if not isinstance(languages, list) or len(languages) != len(texts):
+            raise RuntimeError("macOS 原生语义 helper 缺少语言空间信息")
+        return [EncodedVector(vector, language) for vector, language in zip(vectors, languages)]
+
+
+def native_status(settings: Settings) -> dict[str, object]:
+    available = sys.platform == "darwin" and bool(shutil.which("xcrun"))
+    encoder = NativeMacOSEncoder(settings, prepare=False) if available else None
+    return {
+        "backend": "apple-nlembedding",
+        "available": available,
+        "prepared": encoder.is_prepared() if encoder else False,
+        "helper": str(settings.native_helper),
+        "download_required": False,
+    }

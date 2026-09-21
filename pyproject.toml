@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "downloads-organizer"
-version = "0.2.0"
+version = "0.3.0"
 description = "A local, explainable macOS Downloads organizer"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -25,11 +25,7 @@ Repository = "https://github.com/YangChen-cn/TopicTidy"
 Issues = "https://github.com/YangChen-cn/TopicTidy/issues"
 
 [project.optional-dependencies]
-model = [
-  "huggingface-hub==0.35.0",
-  "sentence-transformers==5.1.0",
-]
-dev = ["pytest==8.4.2"]
+dev = ["hatchling==1.27.0", "pytest==8.4.2"]
 
 [project.scripts]
 downloads-organizer = "downloads_organizer.cli:app"

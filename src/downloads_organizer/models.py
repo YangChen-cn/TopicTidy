@@ -34,6 +34,7 @@ class IndexedFile:
     summary: str
     extraction_error: str | None
     vector: list[float] | None = None
+    vector_space: str | None = None
 
 
 @dataclass

@@ -57,8 +57,8 @@ def run_benchmark(path: Path | None = None) -> dict[str, Any]:
                 )
                 vector = document.get("vector")
                 db.conn.execute(
-                    """INSERT INTO features(file_id,fingerprint,extractor_version,model_version,text,title,keywords,summary,embedding)
-                    VALUES(?,?,?,'benchmark-fixed',?,?,?,?,?)""",
+                    """INSERT INTO features(file_id,fingerprint,extractor_version,model_version,text,title,keywords,summary,embedding,embedding_space)
+                    VALUES(?,?,?,'benchmark-fixed',?,?,?,?,?,'benchmark-multilingual')""",
                     (cursor.lastrowid, digest, "benchmark:1", content, document.get("title", ""),
                      dumps(keywords(content)), content[:600], json.dumps(vector).encode() if vector else None),
                 )
@@ -88,4 +88,3 @@ def run_benchmark(path: Path | None = None) -> dict[str, Any]:
         "exact_cluster_match": expected_normalized == predicted_normalized,
         "unclassified_match": set(fixture.get("expected_unclassified", [])) == {file.name for file in unclassified},
     }
-

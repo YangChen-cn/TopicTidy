@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS files(
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS features(
  fingerprint TEXT NOT NULL, extractor_version TEXT NOT NULL, model_version TEXT,
  text TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', keywords TEXT NOT NULL DEFAULT '[]',
  summary TEXT NOT NULL DEFAULT '', truncated INTEGER NOT NULL DEFAULT 0,
- extraction_error TEXT, embedding BLOB
+ extraction_error TEXT, embedding BLOB, embedding_space TEXT
 );
 CREATE TABLE IF NOT EXISTS topics(
  topic_key TEXT PRIMARY KEY, display_name TEXT NOT NULL,

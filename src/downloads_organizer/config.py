@@ -8,7 +8,6 @@ from pathlib import Path
 from platformdirs import user_data_dir
 
 APP_NAME = "DownloadsOrganizer"
-MODEL_ID = "intfloat/multilingual-e5-small"
 COURSE_PATTERN = re.compile(r"(?i)(?<![A-Z0-9])([A-Z]{2,8})[\s_-]?(\d{4})(?!\d)")
 INCOMPLETE_SUFFIXES = {".crdownload", ".download", ".part", ".tmp"}
 
@@ -28,8 +27,12 @@ class Settings:
         return self.data_dir / "organizer.sqlite3"
 
     @property
-    def model_dir(self) -> Path:
-        return self.data_dir / "models" / "multilingual-e5-small"
+    def native_helper(self) -> Path:
+        return self.data_dir / "bin" / "native-embedding"
+
+    @property
+    def native_helper_stamp(self) -> Path:
+        return self.data_dir / "bin" / "native-embedding.sha256"
 
     @property
     def organized_dir(self) -> Path:

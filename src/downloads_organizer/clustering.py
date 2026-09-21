@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from .config import COURSE_PATTERN, Settings, all_courses
 from .db import Database, dumps, loads
-from .embedding import LocalEncoder
+from .embedding import SemanticEncoder
 from .models import Evidence, IndexedFile, ProposedGroup
 from .text_features import url_tokens, tokenize
 from .topic_naming import display_name, topic_key
@@ -77,7 +77,7 @@ def _strength(kind: str, score: float) -> str:
 def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
     filename = _jaccard(_tokens(left.path.stem), _tokens(right.path.stem))
     content = _jaccard(set(left.keywords), set(right.keywords))
-    semantic = _cosine(left.vector, right.vector)
+    semantic = _cosine(left.vector, right.vector) if left.vector_space == right.vector_space else 0.0
     source, source_detail = _source_score(left, right)
     left_course, right_course = _primary_course(left), _primary_course(right)
     shared_course = left_course if left_course and left_course == right_course else ""
@@ -127,7 +127,7 @@ def pair_score(left: IndexedFile, right: IndexedFile) -> tuple[float, list[str],
 def load_index(db: Database, statuses: tuple[str, ...] = ("active",)) -> list[IndexedFile]:
     placeholders = ",".join("?" for _ in statuses)
     rows = db.conn.execute(
-        f"""SELECT f.*,x.text,x.title,x.keywords,x.summary,x.extraction_error,x.embedding
+        f"""SELECT f.*,x.text,x.title,x.keywords,x.summary,x.extraction_error,x.embedding,x.embedding_space
         FROM files f LEFT JOIN features x ON x.file_id=f.id WHERE f.status IN ({placeholders}) ORDER BY f.name""",
         statuses,
     ).fetchall()
@@ -145,12 +145,12 @@ def load_index(db: Database, statuses: tuple[str, ...] = ("active",)) -> list[In
             device=row["device"], inode=row["inode"], fingerprint=row["fingerprint"],
             source_urls=loads(row["source_urls"], []), text=row["text"] or "", title=row["title"] or "",
             keywords=loads(row["keywords"], []), summary=row["summary"] or "",
-            extraction_error=row["extraction_error"], vector=vector,
+            extraction_error=row["extraction_error"], vector=vector, vector_space=row["embedding_space"],
         ))
     return result
 
 
-def add_embeddings(db: Database, files: list[IndexedFile], encoder: LocalEncoder) -> None:
+def add_embeddings(db: Database, files: list[IndexedFile], encoder: SemanticEncoder) -> None:
     pending = []
     for file in files:
         row = db.conn.execute("SELECT model_version FROM features WHERE file_id=?", (file.id,)).fetchone()
@@ -160,11 +160,13 @@ def add_embeddings(db: Database, files: list[IndexedFile], encoder: LocalEncoder
     if not pending:
         return
     texts = [(file.title + "\n" + file.summary + "\n" + file.text).strip() for file in pending]
-    for file, vector in zip(pending, encoder.encode(texts)):
-        file.vector = vector
+    for file, encoded in zip(pending, encoder.encode(texts)):
+        file.vector = encoded.vector
+        file.vector_space = encoded.space
         db.conn.execute(
-            "UPDATE features SET embedding=?,model_version=? WHERE file_id=?",
-            (json.dumps(vector).encode("utf-8"), encoder.version, file.id),
+            "UPDATE features SET embedding=?,embedding_space=?,model_version=? WHERE file_id=?",
+            (json.dumps(encoded.vector).encode("utf-8") if encoded.vector is not None else None,
+             encoded.space, encoder.version, file.id),
         )
     db.conn.commit()
 
@@ -235,7 +237,7 @@ def cluster(
     db: Database,
     settings: Settings,
     *,
-    encoder: LocalEncoder | None = None,
+    encoder: SemanticEncoder | None = None,
 ) -> tuple[list[ProposedGroup], list[IndexedFile]]:
     files = load_index(db)
     prototypes = load_index(db, ("organized",))
