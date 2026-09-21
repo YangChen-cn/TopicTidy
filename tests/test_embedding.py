@@ -58,3 +58,35 @@ def test_vectors_from_different_language_spaces_are_not_compared():
     assert assessment.metrics["semantic_similarity"] == 0.0
     semantic = next(item for item in assessment.evidence if item.kind == "semantic_similarity")
     assert semantic.strength == "none"
+
+
+def test_different_languages_use_cached_english_pivots():
+    english = _indexed("energy.txt", [1.0, 0.0], "en", 1)
+    chinese = _indexed("能源.txt", [0.0, 1.0], "zh-Hans", 2)
+    english.pivot_vector = [1.0, 0.0]
+    english.pivot_space = "en"
+    english.pivot_source_language = "en"
+    chinese.pivot_vector = [0.84, 0.16]
+    chinese.pivot_space = "en"
+    chinese.pivot_source_language = "zh-Hans"
+
+    assessment = assess_pair(english, chinese)
+
+    assert assessment.metrics["semantic_similarity"] == 0.0
+    assert assessment.metrics["semantic_cross_language"] > 0.8
+    evidence = next(item for item in assessment.evidence if item.kind == "semantic_cross_language")
+    assert evidence.strength == "strong"
+    assert "zh-Hans → en" in evidence.detail
+
+
+def test_same_language_prefers_native_vectors_over_pivots():
+    left = _indexed("left.txt", [1.0, 0.0], "en", 1)
+    right = _indexed("right.txt", [0.0, 1.0], "en", 2)
+    left.pivot_vector = right.pivot_vector = [1.0, 0.0]
+    left.pivot_space = right.pivot_space = "en"
+    left.pivot_source_language = right.pivot_source_language = "en"
+
+    assessment = assess_pair(left, right)
+
+    assert assessment.metrics["semantic_similarity"] == 0.0
+    assert assessment.metrics["semantic_cross_language"] == 0.0

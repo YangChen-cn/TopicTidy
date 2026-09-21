@@ -39,6 +39,14 @@ class Settings:
         return self.data_dir / "bin" / "native-embedding.sha256"
 
     @property
+    def translation_helper(self) -> Path:
+        return self.data_dir / "bin" / "native-translation"
+
+    @property
+    def translation_helper_stamp(self) -> Path:
+        return self.data_dir / "bin" / "native-translation.sha256"
+
+    @property
     def organized_dir(self) -> Path:
         return self.downloads / self.organized_name
 

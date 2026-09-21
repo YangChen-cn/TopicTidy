@@ -14,7 +14,7 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-这是完整的运行安装，不会安装 PyTorch、Transformers 或 sentence-transformers，也不会下载模型。语义特征使用 macOS 自带的 NaturalLanguage sentence embedding。首次执行 `propose` 时只会在本机编译一个约 100 KB 的 Swift helper，因此需要 Xcode Command Line Tools。
+这是完整的运行安装，不会安装 PyTorch、Transformers 或 sentence-transformers，也不会下载模型。语义特征使用 macOS 自带的 NaturalLanguage sentence embedding；跨语言候选使用 Apple Translation 的已安装语言资产。首次使用时只会在本机编译两个轻量 Swift helper，因此需要 Xcode Command Line Tools。
 
 命令行简称为 `tt`（TopicTidy）；同时保留 `downloads-organizer` 兼容入口。macOS 自带的 `tidy` 是另一个 HTML 工具，请勿将它用于本项目。
 
@@ -25,7 +25,9 @@ tt semantic status
 tt semantic prepare
 ```
 
-这两个命令都不会访问网络。系统按文档主要语言选择 Apple embedding；不同语言向量空间不会互相计算余弦相似度。如果某种语言的系统资产尚未存在，TopicTidy 不会代为下载，而是跳过该文件的语义向量。跨语言文件和缺少系统资产的文件仍使用课程号、文件名、正文词元和来源 URL 等证据。
+这两个命令都不会访问网络。`semantic status` 分别报告 Apple embedding 和 `zh-Hans`、`ja`、`ko` 到 English 的 Translation 状态，并区分 `installed`、`not installed` 与 `unavailable`。`semantic prepare` 只编译 helper，不准备或下载语言资产。
+
+每个文件保留原语言的 native embedding。不同原生语言空间不会直接比较；只有候选文件语言不同、已有证据不足且文件名、正文或来源路径至少提供一项候选信号时，`propose` 才构造约 2400 字符的代表性短文本。英文短文本直接进入 English NLEmbedding，其他语言仅在对应 Translation 语言对已经安装时翻译到 English，再生成 pivot embedding。macOS 26+ 支持命令行 helper 的 installed-only 翻译；旧系统会安全降级。任何未安装或不支持的语言对都不会触发下载，也不会让建议生成失败。
 
 ## 使用
 
@@ -41,7 +43,7 @@ tt benchmark
 
 `scan` 只读取 Downloads 顶层文件。它忽略目录、符号链接、隐藏文件、`Organized` 和 `.crdownload`、`.download`、`.part`、`.tmp` 等未完成下载。支持 PDF、DOCX、PPTX、TXT 和 Markdown 文本提取；扫描件不做 OCR。提取器通过注册表插拔，扫描器不依赖具体文档库。大型 PDF 只读取前几页、代表性中间页和末尾页，并在文本预算内停止。
 
-`propose --json` 适合脚本和未来 GUI。每个主题同时包含稳定的 `topic_id`、可修改的 `display_name`，以及 course code、文件名、正文、语义和来源 URL 五类结构化证据。证据区分 `strong`、`weak` 和 `none`。默认启用零下载的 macOS 原生语义 backend；`propose --no-semantic` 可主动跳过语义计算。
+`propose --json` 适合脚本和未来 GUI。每个主题同时包含稳定的 `topic_id`、可修改的 `display_name`，以及 course code、文件名、正文、原生语义、跨语言语义和来源 URL 六类结构化证据。证据区分 `strong`、`weak` 和 `none`；跨语言命中会显示类似 `跨语言语义相似度 0.84（zh-Hans → en）` 的独立依据。默认启用零下载的 macOS 原生语义 backend；`propose --no-semantic` 会同时跳过 native 和 pivot 语义计算。
 
 `review` 提供 `list`、`rename`、`move`、`split`、`merge`、`exclude` 和 `folder` 命令。含空格的主题名需要使用引号，例如：
 

@@ -27,6 +27,8 @@ class SemanticEncoder(Protocol):
 
     def encode(self, texts: list[str]) -> list[EncodedVector]: ...
 
+    def encode_in_language(self, texts: list[str], language: str) -> list[EncodedVector]: ...
+
 
 def _source_path() -> Path:
     return Path(str(resource_files("downloads_organizer.native").joinpath("embedding.swift")))
@@ -80,10 +82,10 @@ class NativeMacOSEncoder:
             raise RuntimeError(f"无法构建 macOS 原生语义 helper：{detail}") from exc
         return self.settings.native_helper
 
-    def encode(self, texts: list[str]) -> list[EncodedVector]:
+    def _encode(self, texts: list[str], language: str | None = None) -> list[EncodedVector]:
         if not texts:
             return []
-        request = json.dumps({"texts": texts}, ensure_ascii=False).encode("utf-8")
+        request = json.dumps({"texts": texts, "language": language}, ensure_ascii=False).encode("utf-8")
         try:
             result = subprocess.run(
                 [str(self.prepare())], input=request, check=True, capture_output=True, timeout=180,
@@ -102,14 +104,44 @@ class NativeMacOSEncoder:
             raise RuntimeError("macOS 原生语义 helper 缺少语言空间信息")
         return [EncodedVector(vector, language) for vector, language in zip(vectors, languages)]
 
+    def encode(self, texts: list[str]) -> list[EncodedVector]:
+        return self._encode(texts)
 
-def native_status(settings: Settings) -> dict[str, object]:
+    def encode_in_language(self, texts: list[str], language: str) -> list[EncodedVector]:
+        """Encode with one explicit NLEmbedding language space."""
+        return self._encode(texts, language)
+
+
+def native_status(
+    settings: Settings,
+    languages: tuple[str, ...] = ("en", "zh-Hans"),
+    *,
+    inspect_languages: bool = False,
+) -> dict[str, object]:
     available = sys.platform == "darwin" and bool(shutil.which("xcrun"))
     encoder = NativeMacOSEncoder(settings, prepare=False) if available else None
-    return {
+    result: dict[str, object] = {
         "backend": "apple-nlembedding",
         "available": available,
         "prepared": encoder.is_prepared() if encoder else False,
         "helper": str(settings.native_helper),
         "download_required": False,
     }
+    if inspect_languages and encoder:
+        samples = {"en": "renewable energy systems", "zh-Hans": "可再生能源系统"}
+        try:
+            encoded = [
+                encoder.encode_in_language([samples.get(language, language)], language)[0]
+                for language in languages
+            ]
+            result["languages"] = {
+                language: "available" if value.vector else "unavailable"
+                for language, value in zip(languages, encoded)
+            }
+            result["prepared"] = encoder.is_prepared()
+        except RuntimeError as exc:
+            result["languages"] = {language: "unavailable" for language in languages}
+            result["error"] = str(exc)
+    elif inspect_languages:
+        result["languages"] = {language: "unavailable" for language in languages}
+    return result

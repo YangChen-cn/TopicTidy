@@ -35,6 +35,10 @@ class IndexedFile:
     extraction_error: str | None
     vector: list[float] | None = None
     vector_space: str | None = None
+    pivot_vector: list[float] | None = None
+    pivot_space: str | None = None
+    pivot_source_language: str | None = None
+    pivot_embedding_version: str | None = None
 
 
 @dataclass

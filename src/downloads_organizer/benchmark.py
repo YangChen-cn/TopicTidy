@@ -57,11 +57,24 @@ def run_benchmark(path: Path | None = None) -> dict[str, Any]:
                 )
                 vector = document.get("vector")
                 db.conn.execute(
-                    """INSERT INTO features(file_id,fingerprint,extractor_version,model_version,text,title,keywords,summary,embedding,embedding_space)
-                    VALUES(?,?,?,'benchmark-fixed',?,?,?,?,?,'benchmark-multilingual')""",
+                    """INSERT INTO features(
+                    file_id,fingerprint,extractor_version,model_version,text,title,keywords,summary,
+                    native_embedding,native_embedding_space
+                    ) VALUES(?,?,?,'benchmark-fixed',?,?,?,?,?,?)""",
                     (cursor.lastrowid, digest, "benchmark:1", content, document.get("title", ""),
-                     dumps(keywords(content)), content[:600], json.dumps(vector).encode() if vector else None),
+                     dumps(keywords(content)), content[:600], json.dumps(vector).encode() if vector else None,
+                     document.get("native_space", "benchmark-multilingual")),
                 )
+                pivot = document.get("pivot_vector")
+                if pivot:
+                    db.conn.execute(
+                        """INSERT INTO semantic_pivots(
+                        file_id,fingerprint,source_language,target_language,semantic_text,translated_text,
+                        translation_version,pivot_embedding,pivot_embedding_space,embedding_version,created_at
+                        ) VALUES(?,?,?,'en',?,?,'benchmark-translation',?,'en','benchmark-pivot',0)""",
+                        (cursor.lastrowid, digest, document.get("native_space", "en"), content,
+                         document.get("translated_content", content), json.dumps(pivot).encode()),
+                    )
             db.conn.commit()
             predicted, unclassified = cluster(db, settings)
         finally:

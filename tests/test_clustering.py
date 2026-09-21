@@ -30,7 +30,10 @@ def test_content_and_fixed_semantic_vectors_cluster_numbered_documents(workspace
     put(settings.downloads, "02 Renewable Energy.md", "renewable energy solar wind generation systems")
     scan(db, settings)
     vector = json.dumps([1.0, 0.0]).encode()
-    db.conn.execute("UPDATE features SET embedding=?,model_version='test-fixed'", (vector,))
+    db.conn.execute(
+        "UPDATE features SET native_embedding=?,native_embedding_space='test',model_version='test-fixed'",
+        (vector,),
+    )
     db.conn.commit()
 
     groups, unclassified = cluster(db, settings)
@@ -42,7 +45,8 @@ def test_content_and_fixed_semantic_vectors_cluster_numbered_documents(workspace
     assert groups[0].topic_key.startswith("cluster:")
     evidence = {item.kind: item for item in groups[0].evidence}
     assert set(evidence) == {
-        "course_code", "filename_similarity", "content_similarity", "semantic_similarity", "source_url",
+        "course_code", "filename_similarity", "content_similarity", "semantic_similarity",
+        "semantic_cross_language", "source_url",
     }
     assert evidence["semantic_similarity"].strength == "strong"
     assert evidence["source_url"].strength == "none"
@@ -97,7 +101,10 @@ def test_term_and_year_is_not_mistaken_for_course_code(workspace):
     put(settings.downloads, "lec2.md", "Autumn 2026 Digital Image Processing intensity transformations")
     scan(db, settings)
     vector = json.dumps([1.0, 0.0]).encode()
-    db.conn.execute("UPDATE features SET embedding=?,embedding_space='test',model_version='test-fixed'", (vector,))
+    db.conn.execute(
+        "UPDATE features SET native_embedding=?,native_embedding_space='test',model_version='test-fixed'",
+        (vector,),
+    )
     db.conn.execute(
         "UPDATE files SET source_urls=?",
         ('["https://moodle.example/course/7043/lecture"]',),

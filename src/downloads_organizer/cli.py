@@ -19,6 +19,7 @@ from .embedding import NativeMacOSEncoder, native_status
 from .locking import app_lock
 from .operations import apply_plan, edit_plan, plan_rows, preview_moves, undo_batch
 from .scanner import scan as run_scan
+from .translation import NativeTranslationBackend, translation_status
 
 app = typer.Typer(help="本地、可解释、可撤销的 macOS Downloads 整理器", no_args_is_help=True)
 semantic_app = typer.Typer(help="管理零下载的 macOS 原生语义 backend")
@@ -39,7 +40,20 @@ def _open() -> tuple[Settings, Database]:
 def semantic_status() -> None:
     """检查系统原生语义能力；不会下载任何内容。"""
     settings = Settings.load()
-    typer.echo(json.dumps(native_status(settings), ensure_ascii=False, indent=2))
+    embedding = native_status(settings, inspect_languages=True)
+    translation = translation_status(settings)
+    console.print("[bold]Apple embedding:[/bold]")
+    for language, state in embedding.get("languages", {}).items():
+        console.print(f"  {language}: {state}")
+    if embedding.get("error"):
+        console.print(f"  [yellow]{embedding['error']}[/yellow]")
+    console.print("\n[bold]Cross-language translation:[/bold]")
+    labels = {"installed": "installed", "supported": "not installed", "unsupported": "unavailable"}
+    for pair, state in translation.get("pairs", {}).items():
+        console.print(f"  {pair}: {labels.get(state, state)}")
+    if translation.get("error"):
+        console.print(f"  [yellow]{translation['error']}[/yellow]")
+    console.print("\n[dim]只检查本地资产；未请求或下载语言包。[/dim]")
 
 
 @semantic_app.command("prepare")
@@ -49,9 +63,15 @@ def semantic_prepare() -> None:
     with app_lock(settings.data_dir):
         encoder = NativeMacOSEncoder(settings)
         vectors = encoder.encode(["renewable energy systems", "power grid control"])
+        try:
+            translator = NativeTranslationBackend(settings)
+            translation_message = f"Translation helper 已就绪：{translator.settings.translation_helper}"
+        except RuntimeError as exc:
+            translation_message = f"Translation helper 不可用，后续将自动降级：{exc}"
     size = settings.native_helper.stat().st_size
     console.print(f"原生语义 backend 已就绪：{settings.native_helper}")
     console.print(f"helper 大小：{size / 1024:.0f} KB；系统向量维度：{len(vectors[0].vector or [])}")
+    console.print(translation_message)
     console.print("未下载模型或 Python ML 框架。")
 
 
@@ -106,14 +126,20 @@ def propose(
     settings, db = _open()
     try:
         encoder = None
+        translator = None
         semantic_error = None
+        translation_messages: list[str] = []
         if not no_semantic:
             try:
                 encoder = NativeMacOSEncoder(settings)
+                translator = NativeTranslationBackend(settings, prepare=False)
             except RuntimeError as exc:
                 semantic_error = str(exc)
         with app_lock(settings.data_dir):
-            groups, unclassified = cluster(db, settings, encoder=encoder)
+            groups, unclassified = cluster(
+                db, settings, encoder=encoder, translator=translator,
+                translation_messages=translation_messages,
+            )
             plan_id = save_plan(db, settings, groups, unclassified)
         if json_output:
             payload = {
@@ -122,6 +148,8 @@ def propose(
                 "unclassified": [str(file.path) for file in unclassified],
                 "semantic_backend_used": encoder.version if encoder else None,
                 "semantic_error": semantic_error,
+                "translation_backend_used": translator.version if translator else None,
+                "translation_warnings": translation_messages,
             }
             typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
         else:
@@ -130,6 +158,8 @@ def propose(
                 console.print(f"\n[yellow]原生语义不可用，已继续使用其他特征：{semantic_error}[/yellow]")
             elif encoder is None:
                 console.print("\n[dim]已按要求跳过原生语义特征。[/dim]")
+            for message in translation_messages:
+                console.print(f"\n[yellow]跨语言语义已降级：{message}[/yellow]")
             console.print(f"\n审阅：tt review {plan_id}")
     finally:
         db.close()

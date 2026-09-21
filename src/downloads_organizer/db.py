@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS files(
@@ -21,7 +21,15 @@ CREATE TABLE IF NOT EXISTS features(
  fingerprint TEXT NOT NULL, extractor_version TEXT NOT NULL, model_version TEXT,
  text TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', keywords TEXT NOT NULL DEFAULT '[]',
  summary TEXT NOT NULL DEFAULT '', truncated INTEGER NOT NULL DEFAULT 0,
- extraction_error TEXT, embedding BLOB, embedding_space TEXT
+ extraction_error TEXT, native_embedding BLOB, native_embedding_space TEXT
+);
+CREATE TABLE IF NOT EXISTS semantic_pivots(
+ file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+ fingerprint TEXT NOT NULL, source_language TEXT NOT NULL, target_language TEXT NOT NULL,
+ semantic_text TEXT NOT NULL, translated_text TEXT NOT NULL,
+ translation_version TEXT NOT NULL, pivot_embedding BLOB, pivot_embedding_space TEXT,
+ embedding_version TEXT NOT NULL, created_at REAL NOT NULL,
+ PRIMARY KEY(file_id, target_language)
 );
 CREATE TABLE IF NOT EXISTS topics(
  topic_key TEXT PRIMARY KEY, display_name TEXT NOT NULL,

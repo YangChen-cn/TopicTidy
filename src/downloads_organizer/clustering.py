@@ -11,8 +11,10 @@ from .config import COURSE_PATTERN, NON_COURSE_PREFIXES, Settings, all_courses
 from .db import Database, dumps, loads
 from .embedding import SemanticEncoder
 from .models import Evidence, IndexedFile, ProposedGroup
+from .semantic_text import build_semantic_text
 from .text_features import url_tokens, tokenize
 from .topic_naming import display_name, topic_key
+from .translation import TranslationBackend, ensure_pivot_embeddings
 
 
 @dataclass(frozen=True)
@@ -95,10 +97,27 @@ def _strength(kind: str, score: float) -> str:
     return "none"
 
 
+def _cross_language_detail(left: IndexedFile, right: IndexedFile, score: float) -> str:
+    languages = sorted({
+        language for language in (left.pivot_source_language, right.pivot_source_language)
+        if language and language != "en"
+    })
+    route = "、".join(languages) + " → en" if languages else "未使用 English pivot"
+    return f"跨语言语义相似度 {score:.2f}（{route}）"
+
+
 def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
     filename = _jaccard(_tokens(left.path.stem), _tokens(right.path.stem))
     content = _jaccard(set(left.keywords), set(right.keywords))
-    semantic = _cosine(left.vector, right.vector) if left.vector_space == right.vector_space else 0.0
+    same_native_space = bool(left.vector_space and left.vector_space == right.vector_space)
+    semantic = _cosine(left.vector, right.vector) if same_native_space else 0.0
+    cross_semantic = 0.0
+    if (
+        left.vector_space and right.vector_space and left.vector_space != right.vector_space
+        and left.pivot_space == right.pivot_space == "en"
+    ):
+        cross_semantic = _cosine(left.pivot_vector, right.pivot_vector)
+    semantic_for_score = semantic if same_native_space else cross_semantic
     source, source_detail = _source_score(left, right)
     left_primary, right_primary = _primary_course(left), _primary_course(right)
     left_course, right_course = _declared_course(left), _declared_course(right)
@@ -117,6 +136,10 @@ def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
         Evidence("filename_similarity", _strength("filename", filename), filename, f"文件名相似度 {filename:.2f}"),
         Evidence("content_similarity", _strength("content", content), content, f"正文关键词相似度 {content:.2f}"),
         Evidence("semantic_similarity", _strength("semantic", semantic), semantic, f"本地语义相似度 {semantic:.2f}"),
+        Evidence(
+            "semantic_cross_language", _strength("semantic", cross_semantic), cross_semantic,
+            _cross_language_detail(left, right, cross_semantic),
+        ),
         Evidence("source_url", _strength("source_url", source), source, source_detail),
     ]
 
@@ -124,21 +147,22 @@ def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
         conflicts.append(f"课程号冲突：{left_course} / {right_course}")
         return PairAssessment(0.0, {
             "course_code": 0.0, "filename_similarity": filename, "content_similarity": content,
-            "semantic_similarity": semantic, "source_url": source,
+            "semantic_similarity": semantic, "semantic_cross_language": cross_semantic, "source_url": source,
         }, evidence, conflicts)
 
-    score = filename * 0.32 + source * 0.13 + content * 0.25 + semantic * 0.30
+    score = filename * 0.32 + source * 0.13 + content * 0.25 + semantic_for_score * 0.30
     if shared_course:
         score = max(score, 0.96)
-    if semantic >= 0.82 and content >= 0.20:
+    if semantic_for_score >= 0.82 and content >= 0.20:
         score = max(score, 0.68)
-    if semantic >= 0.78 and source >= 0.50:
+    if semantic_for_score >= 0.78 and source >= 0.50:
         score = max(score, 0.68)
     return PairAssessment(score, {
         "course_code": 1.0 if shared_course else 0.0,
         "filename_similarity": filename,
         "content_similarity": content,
         "semantic_similarity": semantic,
+        "semantic_cross_language": cross_semantic,
         "source_url": source,
     }, evidence, conflicts)
 
@@ -153,16 +177,27 @@ def pair_score(left: IndexedFile, right: IndexedFile) -> tuple[float, list[str],
 def load_index(db: Database, statuses: tuple[str, ...] = ("active",)) -> list[IndexedFile]:
     placeholders = ",".join("?" for _ in statuses)
     rows = db.conn.execute(
-        f"""SELECT f.*,x.text,x.title,x.keywords,x.summary,x.extraction_error,x.embedding,x.embedding_space
-        FROM files f LEFT JOIN features x ON x.file_id=f.id WHERE f.status IN ({placeholders}) ORDER BY f.name""",
+        f"""SELECT f.*,x.text,x.title,x.keywords,x.summary,x.extraction_error,
+        x.native_embedding,x.native_embedding_space,
+        p.pivot_embedding,p.pivot_embedding_space,p.source_language AS pivot_source_language,
+        p.embedding_version AS pivot_embedding_version
+        FROM files f LEFT JOIN features x ON x.file_id=f.id
+        LEFT JOIN semantic_pivots p ON p.file_id=f.id AND p.target_language='en' AND p.fingerprint=f.fingerprint
+        WHERE f.status IN ({placeholders}) ORDER BY f.name""",
         statuses,
     ).fetchall()
     result = []
     for row in rows:
         vector = None
-        if row["embedding"]:
+        if row["native_embedding"]:
             try:
-                vector = json.loads(bytes(row["embedding"]).decode("utf-8"))
+                vector = json.loads(bytes(row["native_embedding"]).decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                pass
+        pivot_vector = None
+        if row["pivot_embedding"]:
+            try:
+                pivot_vector = json.loads(bytes(row["pivot_embedding"]).decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
                 pass
         result.append(IndexedFile(
@@ -171,7 +206,10 @@ def load_index(db: Database, statuses: tuple[str, ...] = ("active",)) -> list[In
             device=row["device"], inode=row["inode"], fingerprint=row["fingerprint"],
             source_urls=loads(row["source_urls"], []), text=row["text"] or "", title=row["title"] or "",
             keywords=loads(row["keywords"], []), summary=row["summary"] or "",
-            extraction_error=row["extraction_error"], vector=vector, vector_space=row["embedding_space"],
+            extraction_error=row["extraction_error"], vector=vector,
+            vector_space=row["native_embedding_space"], pivot_vector=pivot_vector,
+            pivot_space=row["pivot_embedding_space"], pivot_source_language=row["pivot_source_language"],
+            pivot_embedding_version=row["pivot_embedding_version"],
         ))
     return result
 
@@ -185,16 +223,36 @@ def add_embeddings(db: Database, files: list[IndexedFile], encoder: SemanticEnco
             pending.append(file)
     if not pending:
         return
-    texts = [(file.title + "\n" + file.summary + "\n" + file.text).strip() for file in pending]
+    texts = [build_semantic_text(file) for file in pending]
     for file, encoded in zip(pending, encoder.encode(texts)):
         file.vector = encoded.vector
         file.vector_space = encoded.space
         db.conn.execute(
-            "UPDATE features SET embedding=?,embedding_space=?,model_version=? WHERE file_id=?",
+            "UPDATE features SET native_embedding=?,native_embedding_space=?,model_version=? WHERE file_id=?",
             (json.dumps(encoded.vector).encode("utf-8") if encoded.vector is not None else None,
              encoded.space, encoder.version, file.id),
         )
     db.conn.commit()
+
+
+def _pivot_candidate_ids(files: list[IndexedFile], threshold: float) -> set[int]:
+    candidates: set[int] = set()
+    for index, left in enumerate(files):
+        for right in files[index + 1:]:
+            if not left.vector_space or not right.vector_space or left.vector_space == right.vector_space:
+                continue
+            assessment = assess_pair(left, right)
+            if assessment.conflicts or assessment.total >= threshold:
+                continue
+            metrics = assessment.metrics
+            plausible = (
+                metrics["filename_similarity"] >= 0.15
+                or metrics["content_similarity"] >= 0.10
+                or metrics["source_url"] >= 0.35
+            )
+            if plausible:
+                candidates.update((left.id, right.id))
+    return candidates
 
 
 def _complete_link(clusters: list[list[IndexedFile]], threshold: float) -> list[list[IndexedFile]]:
@@ -225,9 +283,10 @@ def _metric_evidence(kind: str, score: float, course_code: str = "") -> Evidence
         "filename_similarity": "组内文件名相似度",
         "content_similarity": "组内正文关键词相似度",
         "semantic_similarity": "组内本地语义相似度",
+        "semantic_cross_language": "组内跨语言语义相似度",
         "source_url": "组内来源 URL 证据",
     }
-    strength_kind = kind.removesuffix("_similarity")
+    strength_kind = "semantic" if kind == "semantic_cross_language" else kind.removesuffix("_similarity")
     return Evidence(kind, _strength(strength_kind, score), score, f"{labels[kind]} {score:.2f}")
 
 
@@ -235,7 +294,8 @@ def _group_details(files: list[IndexedFile], course_code: str = "") -> tuple[flo
     if len(files) < 2:
         evidence = [_metric_evidence("course_code", 1.0 if course_code else 0.0, course_code)]
         evidence.extend(_metric_evidence(kind, 0.0) for kind in (
-            "filename_similarity", "content_similarity", "semantic_similarity", "source_url",
+            "filename_similarity", "content_similarity", "semantic_similarity",
+            "semantic_cross_language", "source_url",
         ))
         return (0.96 if course_code else 0.0), evidence, []
     assessments = [
@@ -246,9 +306,26 @@ def _group_details(files: list[IndexedFile], course_code: str = "") -> tuple[flo
     scores = [assessment.total for assessment in assessments]
     confidence = min(scores) * 0.7 + (sum(scores) / len(scores)) * 0.3
     evidence = [_metric_evidence("course_code", 1.0 if course_code else 0.0, course_code)]
-    for kind in ("filename_similarity", "content_similarity", "semantic_similarity", "source_url"):
-        value = sum(item.metrics[kind] for item in assessments) / len(assessments)
-        evidence.append(_metric_evidence(kind, value))
+    for kind in (
+        "filename_similarity", "content_similarity", "semantic_similarity",
+        "semantic_cross_language", "source_url",
+    ):
+        values = [item.metrics[kind] for item in assessments]
+        positive = [value for value in values if value > 0]
+        value = (
+            sum(positive) / len(positive)
+            if kind in {"semantic_similarity", "semantic_cross_language"} and positive
+            else sum(values) / len(values)
+        )
+        item = _metric_evidence(kind, value)
+        if kind == "semantic_cross_language" and value > 0:
+            languages = sorted({
+                file.pivot_source_language for file in files
+                if file.pivot_source_language and file.pivot_source_language != "en"
+            })
+            route = "、".join(languages) + " → en"
+            item = Evidence(kind, item.strength, value, f"跨语言语义相似度 {value:.2f}（{route}）")
+        evidence.append(item)
     conflicts = sorted({conflict for item in assessments for conflict in item.conflicts})
     return confidence, evidence, conflicts
 
@@ -273,12 +350,25 @@ def cluster(
     settings: Settings,
     *,
     encoder: SemanticEncoder | None = None,
+    translator: TranslationBackend | None = None,
+    translation_messages: list[str] | None = None,
 ) -> tuple[list[ProposedGroup], list[IndexedFile]]:
     files = load_index(db)
     prototypes = load_index(db, ("organized",))
     if encoder:
         add_embeddings(db, files, encoder)
         add_embeddings(db, prototypes, encoder)
+        if translator:
+            all_files = files + prototypes
+            for file in all_files:
+                if file.pivot_embedding_version != encoder.version:
+                    file.pivot_vector = None
+                    file.pivot_space = None
+            candidate_ids = _pivot_candidate_ids(all_files, settings.cluster_threshold)
+            selected = [file for file in all_files if file.id in candidate_ids]
+            messages = ensure_pivot_embeddings(db, selected, encoder, translator)
+            if translation_messages is not None:
+                translation_messages.extend(messages)
     assigned: set[int] = set()
     groups: list[ProposedGroup] = []
     forced_unclassified: list[IndexedFile] = []
@@ -338,9 +428,21 @@ def cluster(
         members = [item[0] for item in matches]
         confidence = min(item[1].total for item in matches)
         evidence = [Evidence("learned_topic", "strong", 1.0, "匹配已确认的主题样本")]
-        for kind in ("filename_similarity", "content_similarity", "semantic_similarity", "source_url"):
+        for kind in (
+            "filename_similarity", "content_similarity", "semantic_similarity",
+            "semantic_cross_language", "source_url",
+        ):
             score = sum(item[1].metrics[kind] for item in matches) / len(matches)
-            evidence.append(_metric_evidence(kind, score))
+            metric = _metric_evidence(kind, score)
+            if kind == "semantic_cross_language" and score > 0:
+                details = {
+                    entry.detail
+                    for _, assessment in matches
+                    for entry in assessment.evidence
+                    if entry.kind == kind and entry.score and entry.score > 0
+                }
+                metric = Evidence(kind, metric.strength, score, "；".join(sorted(details)))
+            evidence.append(metric)
         groups.append(ProposedGroup(key, name, confidence, members, evidence))
 
     course_map: dict[str, list[IndexedFile]] = {}

@@ -3,6 +3,7 @@ import NaturalLanguage
 
 struct Request: Codable {
     let texts: [String]
+    let language: String?
 }
 
 struct Response: Codable {
@@ -42,7 +43,15 @@ func normalizedAverage(_ vectors: [[Double]]) -> [Double]? {
     return result.map { $0 / norm }
 }
 
-func encode(_ text: String) -> ([Double]?, String?) {
+func encode(_ text: String, requestedLanguage: String?) -> ([Double]?, String?) {
+    if let requestedLanguage {
+        let language = NLLanguage(rawValue: requestedLanguage)
+        guard let embedding = NLEmbedding.sentenceEmbedding(for: language) else {
+            return (nil, requestedLanguage)
+        }
+        let vectors = sampledChunks(text).compactMap { embedding.vector(for: $0) }
+        return (normalizedAverage(vectors), language.rawValue)
+    }
     let recognizer = NLLanguageRecognizer()
     recognizer.processString(String(text.prefix(8000)))
     let detected = recognizer.dominantLanguage
@@ -57,11 +66,10 @@ func encode(_ text: String) -> ([Double]?, String?) {
 do {
     let input = FileHandle.standardInput.readDataToEndOfFile()
     let request = try JSONDecoder().decode(Request.self, from: input)
-    let encoded = request.texts.map(encode)
+    let encoded = request.texts.map { encode($0, requestedLanguage: request.language) }
     let response = Response(vectors: encoded.map(\.0), languages: encoded.map(\.1))
     FileHandle.standardOutput.write(try JSONEncoder().encode(response))
 } catch {
     FileHandle.standardError.write(Data("\(error)\n".utf8))
     exit(1)
 }
-

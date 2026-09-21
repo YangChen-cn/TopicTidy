@@ -37,8 +37,16 @@ def test_changed_file_clears_cached_embedding_and_language_space(workspace):
     path = put(settings.downloads, "notes.md", "first version")
     scan(db, settings)
     db.conn.execute(
-        "UPDATE features SET embedding=?,embedding_space='en',model_version='old'",
+        "UPDATE features SET native_embedding=?,native_embedding_space='en',model_version='old'",
         (b"[1.0,0.0]",),
+    )
+    row = db.conn.execute("SELECT id,fingerprint FROM files").fetchone()
+    db.conn.execute(
+        """INSERT INTO semantic_pivots(
+        file_id,fingerprint,source_language,target_language,semantic_text,translated_text,
+        translation_version,pivot_embedding,pivot_embedding_space,embedding_version,created_at
+        ) VALUES(?,?,'en','en','first','first','identity:1',?,'en','old',1)""",
+        (row["id"], row["fingerprint"], b"[1.0,0.0]"),
     )
     db.conn.commit()
     path.write_text("second version with new content", encoding="utf-8")
@@ -46,11 +54,12 @@ def test_changed_file_clears_cached_embedding_and_language_space(workspace):
     scan(db, settings)
 
     feature = db.conn.execute(
-        "SELECT embedding,embedding_space,model_version FROM features"
+        "SELECT native_embedding,native_embedding_space,model_version FROM features"
     ).fetchone()
-    assert feature["embedding"] is None
-    assert feature["embedding_space"] is None
+    assert feature["native_embedding"] is None
+    assert feature["native_embedding_space"] is None
     assert feature["model_version"] is None
+    assert db.conn.execute("SELECT count(*) FROM semantic_pivots").fetchone()[0] == 0
 
 
 def test_interrupted_move_recovery_updates_file_location(workspace):
