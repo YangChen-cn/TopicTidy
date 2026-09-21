@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .config import COURSE_PATTERN, NON_COURSE_PREFIXES, Settings, all_courses
+from .config import (
+    COURSE_PATTERN,
+    CROSS_LANGUAGE_TIME_WINDOW_SECONDS,
+    NON_COURSE_PREFIXES,
+    Settings,
+    all_courses,
+)
 from .db import Database, dumps, loads
 from .embedding import SemanticEncoder
 from .models import Evidence, IndexedFile, ProposedGroup
@@ -106,6 +112,15 @@ def _cross_language_detail(left: IndexedFile, right: IndexedFile, score: float) 
     return f"跨语言语义相似度 {score:.2f}（{route}）"
 
 
+def _time_gap(left: IndexedFile, right: IndexedFile) -> float:
+    gaps = []
+    if left.created_at > 0 and right.created_at > 0:
+        gaps.append(abs(left.created_at - right.created_at))
+    if left.modified_at > 0 and right.modified_at > 0:
+        gaps.append(abs(left.modified_at - right.modified_at))
+    return min(gaps) if gaps else float("inf")
+
+
 def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
     filename = _jaccard(_tokens(left.path.stem), _tokens(right.path.stem))
     content = _jaccard(set(left.keywords), set(right.keywords))
@@ -157,6 +172,10 @@ def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
         score = max(score, 0.68)
     if semantic_for_score >= 0.78 and source >= 0.50:
         score = max(score, 0.68)
+    if cross_semantic >= 0.92:
+        score = max(score, 0.65)
+    elif cross_semantic >= 0.88 and _time_gap(left, right) <= CROSS_LANGUAGE_TIME_WINDOW_SECONDS:
+        score = max(score, 0.65)
     return PairAssessment(score, {
         "course_code": 1.0 if shared_course else 0.0,
         "filename_similarity": filename,
@@ -235,24 +254,61 @@ def add_embeddings(db: Database, files: list[IndexedFile], encoder: SemanticEnco
     db.conn.commit()
 
 
-def _pivot_candidate_ids(files: list[IndexedFile], threshold: float) -> set[int]:
-    candidates: set[int] = set()
+def _pivot_candidate_ids(files: list[IndexedFile], settings: Settings) -> set[int]:
+    lexical_pairs: list[tuple[float, IndexedFile, IndexedFile]] = []
+    exploration_by_file: dict[int, list[tuple[float, IndexedFile, IndexedFile]]] = {}
     for index, left in enumerate(files):
         for right in files[index + 1:]:
             if not left.vector_space or not right.vector_space or left.vector_space == right.vector_space:
                 continue
             assessment = assess_pair(left, right)
-            if assessment.conflicts or assessment.total >= threshold:
+            if assessment.conflicts or assessment.total >= settings.cluster_threshold:
                 continue
             metrics = assessment.metrics
-            plausible = (
-                metrics["filename_similarity"] >= 0.15
-                or metrics["content_similarity"] >= 0.10
-                or metrics["source_url"] >= 0.35
+            lexical_signal = max(
+                metrics["filename_similarity"] / 0.15,
+                metrics["content_similarity"] / 0.10,
+                metrics["source_url"] / 0.35,
             )
-            if plausible:
-                candidates.update((left.id, right.id))
-    return candidates
+            if lexical_signal >= 1.0:
+                lexical_pairs.append((-lexical_signal, left, right))
+            else:
+                gap = _time_gap(left, right)
+                exploration_by_file.setdefault(left.id, []).append((gap, left, right))
+                exploration_by_file.setdefault(right.id, []).append((gap, left, right))
+
+    selected: set[int] = set()
+    new_pivots: set[int] = set()
+
+    def add_pair(left: IndexedFile, right: IndexedFile) -> bool:
+        new_ids = {
+            file.id for file in (left, right)
+            if not file.pivot_vector and file.id not in new_pivots
+        }
+        if len(new_pivots) + len(new_ids) > settings.cross_language_translation_limit:
+            return False
+        selected.update((left.id, right.id))
+        new_pivots.update(new_ids)
+        return True
+
+    for _, left, right in sorted(lexical_pairs, key=lambda item: (item[0], item[1].id, item[2].id)):
+        add_pair(left, right)
+
+    exploration_pairs: dict[tuple[int, int], tuple[float, IndexedFile, IndexedFile]] = {}
+    for pairs in exploration_by_file.values():
+        ordered = sorted(pairs, key=lambda item: (item[0], item[1].id, item[2].id))
+        chosen = ordered[:1]
+        chosen.extend(
+            item for item in ordered[1:settings.cross_language_candidate_neighbors]
+            if item[0] <= CROSS_LANGUAGE_TIME_WINDOW_SECONDS
+        )
+        for item in chosen:
+            _, left, right = item
+            exploration_pairs[(min(left.id, right.id), max(left.id, right.id))] = item
+
+    for _, left, right in sorted(exploration_pairs.values(), key=lambda item: (item[0], item[1].id, item[2].id)):
+        add_pair(left, right)
+    return selected
 
 
 def _complete_link(clusters: list[list[IndexedFile]], threshold: float) -> list[list[IndexedFile]]:
@@ -364,7 +420,7 @@ def cluster(
                 if file.pivot_embedding_version != encoder.version:
                     file.pivot_vector = None
                     file.pivot_space = None
-            candidate_ids = _pivot_candidate_ids(all_files, settings.cluster_threshold)
+            candidate_ids = _pivot_candidate_ids(all_files, settings)
             selected = [file for file in all_files if file.id in candidate_ids]
             messages = ensure_pivot_embeddings(db, selected, encoder, translator)
             if translation_messages is not None:
@@ -518,7 +574,13 @@ def save_plan(
     with db.transaction() as conn:
         cursor = conn.execute(
             "INSERT INTO plans(created_at,status,config_json) VALUES(?, 'draft', ?)",
-            (now, dumps({"cluster_threshold": settings.cluster_threshold, "organized_dir": str(settings.organized_dir)})),
+            (now, dumps({
+                "cluster_threshold": settings.cluster_threshold,
+                "cross_language_candidate_neighbors": settings.cross_language_candidate_neighbors,
+                "cross_language_translation_limit": settings.cross_language_translation_limit,
+                "cross_language_time_window_seconds": CROSS_LANGUAGE_TIME_WINDOW_SECONDS,
+                "organized_dir": str(settings.organized_dir),
+            })),
         )
         plan_id = cursor.lastrowid
         for group in groups:

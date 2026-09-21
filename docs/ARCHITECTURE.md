@@ -1,12 +1,12 @@
 # 架构说明
 
-核心包按职责分层：`scanner` 负责顶层枚举、稳定性检查、指纹和索引；`extractors` 提供可插拔 `DocumentExtractor` 接口与格式实现；`metadata` 负责 macOS 来源元数据；`text_features` 提供跨格式词元特征；`clustering` 负责结构化证据、课程种子及 complete-link 聚类；`topic_naming` 负责稳定主题命名和内部身份；`operations` 负责预览、移动、日志恢复和撤销；`cli` 只负责终端交互。
+核心包按职责分层：`scanner` 负责顶层枚举、稳定性检查、指纹、extractor-version cache invalidation 和索引；`extractors` 提供可插拔 `DocumentExtractor` 接口与格式实现；`metadata` 负责 macOS 来源元数据；`text_features` 提供跨格式词元特征；`clustering` 负责结构化证据、课程种子及 complete-link 聚类；`topic_naming` 负责稳定主题命名和内部身份；`operations` 负责预览、移动、日志恢复和撤销；`cli` 只负责终端交互。文件状态未变化但 extractor version 改变时，scanner 复用已有内容指纹、重新提取，并清除 native 与 pivot 缓存。
 
 SQLite 使用 WAL 和外键，当前 schema 版本为 4。`files` 保存当前文件身份，`features` 以指纹和 extractor 版本缓存文本、`native_embedding` 及其语言空间；`semantic_pivots` 以文件指纹和目标语言缓存代表性短文本、翻译结果、Translation/embedding 版本和 English pivot vector。文件内容或 extractor 缓存变化时删除对应 pivot；embedding helper 版本变化时复用翻译文本，只重新编码。`topics.topic_key` 是稳定内部身份，`topics.display_name` 是可修改名称。`plans` 与 `plan_members` 保存不可隐式执行的方案快照及结构化证据，`operation_batches` 与 `operation_logs` 保存每次操作的文件级意图和结果，`associations` 通过 `topic_key` 保存人工确认关系。项目尚未进入用户阶段，因此 schema 不做向后迁移；版本不匹配时重建测试数据库。
 
 语义层使用 `SemanticEncoder` 和 `TranslationBackend` 接口。`semantic_text.build_semantic_text` 从标题、摘要、关键词以及正文前/中/后代表片段生成最多约 2400 字符的输入；embedding 和翻译都不读取全文。默认 embedding helper 调用 `NLEmbedding.sentenceEmbedding`，Translation helper 调用 Apple Translation 的 `LanguageAvailability` 和 macOS 26+ `installedSource` 会话。helper 不安装 Python ML 框架、不访问云端 API，也不请求语言包。
 
-同语言且 `native_embedding_space` 相同时优先比较 native vector。不同语言时，只有两边都具备 English pivot vector 才计算 `semantic_cross_language`；否则该项为零并继续依赖其他证据。pivot 是 propose 阶段的 fallback：课程号冲突或已经足够分类的文件不会翻译，完全没有候选信号的跨语言文件也不会翻译。`supported` 但未安装和 `unsupported` 状态只生成降级说明，不会中断方案。
+同语言且 `native_embedding_space` 相同时优先比较 native vector。不同语言时，只有两边都具备 English pivot vector 才计算 `semantic_cross_language`；否则该项为零并继续依赖其他证据。pivot 是 propose 阶段的 fallback：课程号冲突或已经足够分类的文件不会翻译。候选先使用 filename/content/source 信号；没有 lexical clue 时，每个文件选择 1 个最近的跨语言候选，14 天内可扩展到 2 个。每轮最多生成 24 个新 pivot，缓存命中不占额度，使多轮 propose 能逐步探索剩余候选。14 天内的零 lexical pair 需要 pivot cosine 至少 0.88 才能凭跨语言语义达到阈值，窗口外要求 0.92。`supported` 但未安装和 `unsupported` 状态只生成降级说明，不会中断方案。
 
 PDF extractor 只访问采样页。少量页面全部读取；大型文档选择前三页、25%/50%/75% 代表页和最后两页。前部页面获得更高字符预算，同时为中部和尾部预留空间，总文本不超过 `max_chars`。
 

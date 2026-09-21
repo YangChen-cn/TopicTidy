@@ -25,10 +25,12 @@ The CLI and user-facing explanations are Chinese by default. Source code, identi
 - Never scan recursively, follow symlinks, overwrite an existing file, or move a file without an explicit saved plan and user confirmation.
 - Tests and benchmarks must use temporary Downloads directories. Never point automated validation at the real `~/Downloads`.
 - PDF extraction must not read every page of a large document. Preserve front pages, representative middle pages, and tail pages within `max_chars`.
+- An unchanged size/mtime does not make an extraction cache valid by itself. Scanner cache hits must also match the file fingerprint and current extractor cache version.
 - Course-code conflicts are hard negative evidence. A shared source domain alone must never create a cluster.
 - Proposed groups expose structured evidence for course code, filename, content, native semantic similarity, cross-language semantic similarity, and source URL, each marked `strong`, `weak`, or `none`.
 - Native vectors from different language spaces must never be compared. Persist and check `native_embedding_space`; cross-language comparison requires two cached English pivot vectors and distinct `semantic_cross_language` evidence.
 - Translation is propose-time fallback for plausible cross-language candidates. Never run translation during scan or for every indexed file.
+- Cross-language recall without lexical clues must stay bounded by nearest-neighbor and per-proposal limits; course conflicts remain hard negatives.
 - `topic_key` is durable identity; `display_name` is editable presentation. Rename operations must preserve `topic_key`.
 - Confidence values are heuristic scores, not calibrated probabilities.
 - The project is still pre-user. Do not add backward database migrations yet. Change the current schema and bump `SCHEMA_VERSION`; incompatible local test databases may be deleted and rebuilt.

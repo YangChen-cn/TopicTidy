@@ -27,7 +27,9 @@ tt semantic prepare
 
 这两个命令都不会访问网络。`semantic status` 分别报告 Apple embedding 和 `zh-Hans`、`ja`、`ko` 到 English 的 Translation 状态，并区分 `installed`、`not installed` 与 `unavailable`。`semantic prepare` 只编译 helper，不准备或下载语言资产。
 
-每个文件保留原语言的 native embedding。不同原生语言空间不会直接比较；只有候选文件语言不同、已有证据不足且文件名、正文或来源路径至少提供一项候选信号时，`propose` 才构造约 2400 字符的代表性短文本。英文短文本直接进入 English NLEmbedding，其他语言仅在对应 Translation 语言对已经安装时翻译到 English，再生成 pivot embedding。macOS 26+ 支持命令行 helper 的 installed-only 翻译；旧系统会安全降级。任何未安装或不支持的语言对都不会触发下载，也不会让建议生成失败。
+每个文件保留原语言的 native embedding。不同原生语言空间不会直接比较；`propose` 只为跨语言候选构造约 2400 字符的代表性短文本。候选优先来自文件名、正文或来源路径；完全没有词面线索时，每个文件至少探索 1 个最近的跨语言文件，14 天窗口内最多探索 2 个近邻。每轮最多生成 24 个新 pivot，已有缓存不占额度，因此后续 propose 可以继续覆盖尚未探索的候选，而不会退化成一次性全量翻译。英文短文本直接进入 English NLEmbedding，其他语言仅在对应 Translation 语言对已经安装时翻译到 English，再生成 pivot embedding。14 天内零词面线索的 pair 需要至少 0.88 的跨语言语义相似度才可独立成组，窗口外要求至少 0.92。macOS 26+ 支持命令行 helper 的 installed-only 翻译；旧系统会安全降级。任何未安装或不支持的语言对都不会触发下载，也不会让建议生成失败。
+
+扫描缓存同时校验文件指纹与 extractor version。即使文件大小和 mtime 没变，只要 extractor version 更新，也会重新提取并清除对应 native/pivot 语义缓存。
 
 ## 使用
 

@@ -15,4 +15,4 @@ def test_core_benchmark_detects_expected_clusters_without_false_merges():
         "Grid Storage Design v1.pdf",
         "Grid Storage Design v2.docx",
     ]
-
+    assert ["Reference Notes.md", "电池储能概论.md"] in result["predicted_clusters"].values()

@@ -14,6 +14,7 @@ NON_COURSE_PREFIXES = {
     "LECTURE", "CHAPTER",
 }
 INCOMPLETE_SUFFIXES = {".crdownload", ".download", ".part", ".tmp"}
+CROSS_LANGUAGE_TIME_WINDOW_SECONDS = 14 * 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,8 @@ class Settings:
     stable_seconds: float = 2.0
     cluster_threshold: float = 0.64
     course_attach_threshold: float = 0.70
+    cross_language_candidate_neighbors: int = 2
+    cross_language_translation_limit: int = 24
 
     @property
     def database(self) -> Path:

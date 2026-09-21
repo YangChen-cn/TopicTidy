@@ -18,8 +18,8 @@
     {"name": "Large Renewable Systems Report.pdf", "title": "Renewable Systems Report", "content": "Renewable systems modelling solar wind storage performance.", "vector": [0.0, 0.0, 1.0]},
     {"name": "Renewable Systems Appendix.md", "title": "Renewable Systems Appendix", "content": "Renewable systems modelling solar wind storage appendix.", "vector": [0.0, 0.0, 1.0]},
 
-    {"name": "电池储能概论.md", "title": "电池储能概论", "content": "电池储能系统的容量、安全与电网调度。", "native_space": "zh-Hans", "pivot_vector": [0.6, 0.8, 0.0], "translated_content": "Battery storage systems capacity safety and grid dispatch.", "source_urls": ["https://lms.example.edu/course/storage/lecture"]},
-    {"name": "Battery Storage Operations.md", "title": "Battery Storage Operations", "content": "Battery storage systems capacity safety and grid operations.", "native_space": "en", "pivot_vector": [0.6, 0.8, 0.0], "source_urls": ["https://lms.example.edu/course/storage/lecture"]},
+    {"name": "电池储能概论.md", "title": "电池储能概论", "content": "电池储能系统的容量、安全与电网调度。", "native_space": "zh-Hans", "pivot_vector": [0.6, 0.8, 0.0], "translated_content": "Battery storage systems capacity safety and grid dispatch."},
+    {"name": "Reference Notes.md", "title": "Reference Notes", "content": "Battery storage systems capacity safety and grid operations.", "native_space": "en", "pivot_vector": [0.6, 0.8, 0.0]},
 
     {"name": "tax receipt.md", "content": "Annual personal tax receipt and payment.", "source_urls": ["https://portal.example.edu/download/item"]},
     {"name": "hotel booking.md", "content": "Hotel reservation itinerary and booking.", "source_urls": ["https://portal.example.edu/download/item"]},
@@ -34,7 +34,7 @@
     "ELEC6104": ["ELEC6104 Project Overview.md", "ELEC6104 Project Plan.md"],
     "Grid Storage": ["Grid Storage Design v1.pdf", "Grid Storage Design v2.docx"],
     "Renewable Systems": ["Large Renewable Systems Report.pdf", "Renewable Systems Appendix.md"],
-    "Cross-language Storage": ["电池储能概论.md", "Battery Storage Operations.md"]
+    "Cross-language Storage": ["电池储能概论.md", "Reference Notes.md"]
   },
   "expected_unclassified": [
     "archive.zip",

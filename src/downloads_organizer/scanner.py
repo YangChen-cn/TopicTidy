@@ -62,13 +62,30 @@ def scan(
             resolved = str(path.resolve())
             seen.add(resolved)
             existing = db.conn.execute("SELECT * FROM files WHERE path=?", (resolved,)).fetchone()
-            if existing and existing["size"] == stat.st_size and existing["modified_at"] == stat.st_mtime:
+            extractor_version = registry.cache_version(path)
+            existing_feature = None
+            if existing:
+                existing_feature = db.conn.execute(
+                    "SELECT fingerprint,extractor_version FROM features WHERE file_id=?",
+                    (existing["id"],),
+                ).fetchone()
+            same_file_state = bool(
+                existing
+                and existing["size"] == stat.st_size
+                and existing["modified_at"] == stat.st_mtime
+            )
+            cache_current = bool(
+                same_file_state
+                and existing_feature
+                and existing_feature["fingerprint"] == existing["fingerprint"]
+                and existing_feature["extractor_version"] == extractor_version
+            )
+            if cache_current:
                 db.conn.execute("UPDATE files SET status='active', last_seen=? WHERE id=?", (now, existing["id"]))
                 stats["unchanged"] += 1
                 continue
-            digest = fingerprint(path)
+            digest = existing["fingerprint"] if same_file_state else fingerprint(path)
             urls = source_urls(path)
-            extractor_version = registry.cache_version(path)
             with db.transaction() as conn:
                 conn.execute(
                     """INSERT INTO files(path,name,extension,size,created_at,modified_at,device,inode,fingerprint,source_urls,status,last_seen)
