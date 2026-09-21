@@ -4,9 +4,10 @@ import hashlib
 import time
 from pathlib import Path
 
-from .config import EXTRACTOR_VERSION, INCOMPLETE_SUFFIXES, Settings
+from .config import INCOMPLETE_SUFFIXES, Settings
 from .db import Database, dumps
-from .extract import extract, source_urls
+from .extractors import ExtractorRegistry, default_registry
+from .metadata import source_urls
 
 
 def fingerprint(path: Path, chunk_size: int = 1024 * 1024) -> str:
@@ -41,7 +42,14 @@ def is_stable(path: Path, seconds: float) -> bool:
     return (first.st_size, first.st_mtime_ns) == (second.st_size, second.st_mtime_ns)
 
 
-def scan(db: Database, settings: Settings, *, wait_for_stability: bool = False) -> dict[str, int]:
+def scan(
+    db: Database,
+    settings: Settings,
+    *,
+    wait_for_stability: bool = False,
+    extractors: ExtractorRegistry | None = None,
+) -> dict[str, int]:
+    registry = extractors or default_registry()
     stats = {"scanned": 0, "unchanged": 0, "skipped": 0, "errors": 0}
     seen: set[str] = set()
     now = time.time()
@@ -60,6 +68,7 @@ def scan(db: Database, settings: Settings, *, wait_for_stability: bool = False) 
                 continue
             digest = fingerprint(path)
             urls = source_urls(path)
+            extractor_version = registry.cache_version(path)
             with db.transaction() as conn:
                 conn.execute(
                     """INSERT INTO files(path,name,extension,size,created_at,modified_at,device,inode,fingerprint,source_urls,status,last_seen)
@@ -73,17 +82,17 @@ def scan(db: Database, settings: Settings, *, wait_for_stability: bool = False) 
                 file_id = conn.execute("SELECT id FROM files WHERE path=?", (resolved,)).fetchone()[0]
                 cached = conn.execute(
                     "SELECT 1 FROM features WHERE file_id=? AND fingerprint=? AND extractor_version=?",
-                    (file_id, digest, EXTRACTOR_VERSION),
+                    (file_id, digest, extractor_version),
                 ).fetchone()
                 if not cached:
-                    result = extract(path, settings.max_text_chars)
+                    result = registry.extract(path, settings.max_text_chars)
                     conn.execute(
                         """INSERT INTO features(file_id,fingerprint,extractor_version,text,title,keywords,summary,truncated,extraction_error)
                         VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(file_id) DO UPDATE SET
                         fingerprint=excluded.fingerprint,extractor_version=excluded.extractor_version,model_version=NULL,
                         text=excluded.text,title=excluded.title,keywords=excluded.keywords,summary=excluded.summary,
                         truncated=excluded.truncated,extraction_error=excluded.extraction_error,embedding=NULL""",
-                        (file_id, digest, EXTRACTOR_VERSION, result.text, result.title, dumps(result.keywords),
+                        (file_id, digest, extractor_version, result.text, result.title, dumps(result.keywords),
                          result.summary, int(result.truncated), result.error),
                     )
                     if result.error:

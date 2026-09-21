@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS files(
@@ -24,15 +24,17 @@ CREATE TABLE IF NOT EXISTS features(
  extraction_error TEXT, embedding BLOB
 );
 CREATE TABLE IF NOT EXISTS topics(
- id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, folder TEXT, source TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1
+ topic_key TEXT PRIMARY KEY, display_name TEXT NOT NULL,
+ folder TEXT, source TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS plans(
  id INTEGER PRIMARY KEY, created_at REAL NOT NULL, status TEXT NOT NULL, config_json TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS plan_members(
  id INTEGER PRIMARY KEY, plan_id INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
- file_id INTEGER NOT NULL REFERENCES files(id), group_name TEXT, confidence REAL NOT NULL,
- reasons TEXT NOT NULL DEFAULT '[]', conflicts TEXT NOT NULL DEFAULT '[]', excluded INTEGER NOT NULL DEFAULT 0,
+ file_id INTEGER NOT NULL REFERENCES files(id), topic_key TEXT REFERENCES topics(topic_key),
+ group_name TEXT, confidence REAL NOT NULL,
+ reasons TEXT NOT NULL DEFAULT '[]', evidence TEXT NOT NULL DEFAULT '[]', conflicts TEXT NOT NULL DEFAULT '[]', excluded INTEGER NOT NULL DEFAULT 0,
  source_fingerprint TEXT NOT NULL, destination TEXT
 );
 CREATE TABLE IF NOT EXISTS corrections(
@@ -40,7 +42,8 @@ CREATE TABLE IF NOT EXISTS corrections(
  action TEXT NOT NULL, topic_name TEXT, plan_id INTEGER, active INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS associations(
- id INTEGER PRIMARY KEY, topic_name TEXT NOT NULL, file_fingerprint TEXT NOT NULL UNIQUE,
+ id INTEGER PRIMARY KEY, topic_key TEXT NOT NULL REFERENCES topics(topic_key),
+ file_fingerprint TEXT NOT NULL UNIQUE,
  confirmed_at REAL NOT NULL, active INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS operation_batches(
@@ -71,7 +74,10 @@ class Database:
         if row is None:
             self.conn.execute("INSERT INTO schema_meta(version) VALUES (?)", (SCHEMA_VERSION,))
         elif row[0] != SCHEMA_VERSION:
-            raise RuntimeError(f"不支持的数据库版本 {row[0]}")
+            raise RuntimeError(
+                f"数据库版本 {row[0]} 与当前版本 {SCHEMA_VERSION} 不兼容；"
+                "测试阶段请删除本地数据库后重新 scan"
+            )
         self.conn.commit()
 
     @contextmanager

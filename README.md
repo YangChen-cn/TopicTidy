@@ -33,11 +33,12 @@ downloads-organizer review 1
 downloads-organizer apply 1
 downloads-organizer history
 downloads-organizer undo 1
+downloads-organizer benchmark
 ```
 
-`scan` 只读取 Downloads 顶层文件。它忽略目录、符号链接、隐藏文件、`Organized` 和 `.crdownload`、`.download`、`.part`、`.tmp` 等未完成下载。支持 PDF、DOCX、PPTX、TXT 和 Markdown 文本提取；扫描件不做 OCR。
+`scan` 只读取 Downloads 顶层文件。它忽略目录、符号链接、隐藏文件、`Organized` 和 `.crdownload`、`.download`、`.part`、`.tmp` 等未完成下载。支持 PDF、DOCX、PPTX、TXT 和 Markdown 文本提取；扫描件不做 OCR。提取器通过注册表插拔，扫描器不依赖具体文档库。大型 PDF 只读取前几页、代表性中间页和末尾页，并在文本预算内停止。
 
-`propose --json` 适合脚本和未来 GUI。未安装模型时仍能运行，并明确提示语义评分未启用。`propose --no-model` 可主动跳过模型。
+`propose --json` 适合脚本和未来 GUI。每个主题同时包含稳定的 `topic_id`、可修改的 `display_name`，以及 course code、文件名、正文、语义和来源 URL 五类结构化证据。证据区分 `strong`、`weak` 和 `none`。未安装模型时仍能运行，并明确提示语义评分未启用。`propose --no-model` 可主动跳过模型。
 
 `review` 提供 `list`、`rename`、`move`、`split`、`merge`、`exclude` 和 `folder` 命令。含空格的主题名需要使用引号，例如：
 
@@ -67,11 +68,21 @@ export DOWNLOADS_ORGANIZER_HOME=/tmp/demo/state
 
 不要把 `DOWNLOADS_ORGANIZER_DOWNLOADS` 指向需要递归整理的目录；首版只处理该目录的顶层普通文件。人工确认的文件指纹与主题关联会用于未来建议。撤销成功后，对应学习关联会停用。
 
+项目当前处于无用户测试阶段，不维护旧数据库迁移。若升级后提示 schema 版本不兼容，删除 `~/Library/Application Support/DownloadsOrganizer/organizer.sqlite3` 后重新执行 `scan`。
+
 ## 开发与验证
 
 ```bash
 python -m pip install -e '.[dev]'
 pytest
+downloads-organizer benchmark
+```
+
+benchmark 使用内置标注 fixture，输出 expected clusters、predicted clusters、未分类集合以及 pairwise precision / recall / F1。修改权重或命名算法后应保持默认 benchmark 通过；也可传入自定义 JSON：
+
+```bash
+downloads-organizer benchmark path/to/fixture.json --min-f1 0.95
+downloads-organizer benchmark --json
 ```
 
 测试全部使用 pytest 临时目录，不会访问真实 Downloads。`examples/demo-downloads` 提供可复制的演示资料：

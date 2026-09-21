@@ -3,69 +3,125 @@ from __future__ import annotations
 import json
 import time
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
 from .config import COURSE_PATTERN, Settings, all_courses
 from .db import Database, dumps, loads
 from .embedding import LocalEncoder
-from .extract import STOPWORDS, WORD_RE, url_tokens
-from .models import IndexedFile, ProposedGroup
+from .models import Evidence, IndexedFile, ProposedGroup
+from .text_features import url_tokens, tokenize
+from .topic_naming import display_name, topic_key
+
+
+@dataclass(frozen=True)
+class PairAssessment:
+    total: float
+    metrics: dict[str, float]
+    evidence: list[Evidence]
+    conflicts: list[str]
 
 
 def _tokens(value: str) -> set[str]:
-    generic = STOPWORDS | {"pdf", "docx", "pptx", "txt", "final", "copy", "download"}
-    return {t.lower() for t in WORD_RE.findall(value) if t.lower() not in generic and not t.isdigit()}
+    generic = {"pdf", "docx", "pptx", "txt", "markdown", "final", "copy", "download"}
+    return {token for token in tokenize(value) if token not in generic}
 
 
-def _jaccard(a: set[str], b: set[str]) -> float:
-    return len(a & b) / len(a | b) if a and b else 0.0
+def _jaccard(left: set[str], right: set[str]) -> float:
+    return len(left & right) / len(left | right) if left and right else 0.0
 
 
-def _cosine(a: list[float] | None, b: list[float] | None) -> float:
-    if not a or not b or len(a) != len(b):
+def _cosine(left: list[float] | None, right: list[float] | None) -> float:
+    if not left or not right or len(left) != len(right):
         return 0.0
-    return max(0.0, min(1.0, sum(x * y for x, y in zip(a, b))))
+    return max(0.0, min(1.0, sum(a * b for a, b in zip(left, right))))
 
 
-def _source_score(a: IndexedFile, b: IndexedFile) -> float:
-    paths = _jaccard(url_tokens(a.source_urls), url_tokens(b.source_urls))
-    domains_a = {urlparse(x).netloc for x in a.source_urls}
-    domains_b = {urlparse(x).netloc for x in b.source_urls}
-    # A shared domain is weak evidence and cannot independently form a cluster.
-    domain = 0.15 if domains_a & domains_b else 0.0
-    return min(1.0, paths + domain)
+def _source_score(left: IndexedFile, right: IndexedFile) -> tuple[float, str]:
+    path_similarity = _jaccard(url_tokens(left.source_urls), url_tokens(right.source_urls))
+    left_domains = {urlparse(url).netloc for url in left.source_urls}
+    right_domains = {urlparse(url).netloc for url in right.source_urls}
+    shared_domains = sorted(left_domains & right_domains)
+    domain_bonus = 0.15 if shared_domains else 0.0
+    score = min(1.0, path_similarity + domain_bonus)
+    if path_similarity >= 0.35:
+        detail = f"来源 URL 路径相似度 {path_similarity:.2f}"
+    elif shared_domains:
+        detail = f"仅共享下载域名 {shared_domains[0]}"
+    else:
+        detail = "没有共同下载来源证据"
+    return score, detail
 
 
-def pair_score(a: IndexedFile, b: IndexedFile) -> tuple[float, list[str], list[str]]:
-    filename = _jaccard(_tokens(a.path.stem), _tokens(b.path.stem))
-    content = _jaccard(set(a.keywords), set(b.keywords))
-    source = _source_score(a, b)
-    semantic = _cosine(a.vector, b.vector)
-    courses_a = all_courses(a.path.stem + " " + " ".join(a.source_urls))
-    courses_b = all_courses(b.path.stem + " " + " ".join(b.source_urls))
+def _primary_course(file: IndexedFile) -> str:
+    strong = all_courses(file.path.stem + " " + " ".join(file.source_urls))
+    if len(strong) == 1:
+        return next(iter(strong))
+    body = COURSE_PATTERN.findall(file.text[:20_000])
+    counts = Counter(f"{prefix.upper()}{number}" for prefix, number in body)
+    repeated = [code for code, count in counts.items() if count >= 2]
+    return repeated[0] if len(repeated) == 1 else ""
+
+
+def _strength(kind: str, score: float) -> str:
+    strong_at = {"filename": 0.50, "content": 0.40, "semantic": 0.82, "source_url": 0.50}
+    weak_at = {"filename": 0.15, "content": 0.15, "semantic": 0.60, "source_url": 0.01}
+    if score >= strong_at[kind]:
+        return "strong"
+    if score >= weak_at[kind]:
+        return "weak"
+    return "none"
+
+
+def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
+    filename = _jaccard(_tokens(left.path.stem), _tokens(right.path.stem))
+    content = _jaccard(set(left.keywords), set(right.keywords))
+    semantic = _cosine(left.vector, right.vector)
+    source, source_detail = _source_score(left, right)
+    left_course, right_course = _primary_course(left), _primary_course(right)
+    shared_course = left_course if left_course and left_course == right_course else ""
     conflicts: list[str] = []
-    if courses_a and courses_b and courses_a.isdisjoint(courses_b):
-        conflicts.append(f"课程号冲突：{', '.join(sorted(courses_a))} / {', '.join(sorted(courses_b))}")
-        return 0.0, [], conflicts
+
+    evidence = [
+        Evidence(
+            "course_code",
+            "strong" if shared_course else "none",
+            1.0 if shared_course else 0.0,
+            f"共同课程代码 {shared_course}" if shared_course else "没有共同课程代码",
+        ),
+        Evidence("filename_similarity", _strength("filename", filename), filename, f"文件名相似度 {filename:.2f}"),
+        Evidence("content_similarity", _strength("content", content), content, f"正文关键词相似度 {content:.2f}"),
+        Evidence("semantic_similarity", _strength("semantic", semantic), semantic, f"本地语义相似度 {semantic:.2f}"),
+        Evidence("source_url", _strength("source_url", source), source, source_detail),
+    ]
+
+    if left_course and right_course and left_course != right_course:
+        conflicts.append(f"课程号冲突：{left_course} / {right_course}")
+        return PairAssessment(0.0, {
+            "course_code": 0.0, "filename_similarity": filename, "content_similarity": content,
+            "semantic_similarity": semantic, "source_url": source,
+        }, evidence, conflicts)
+
     score = filename * 0.32 + source * 0.13 + content * 0.25 + semantic * 0.30
-    reasons = []
-    if courses_a & courses_b:
+    if shared_course:
         score = max(score, 0.96)
-        reasons.append(f"相同课程号 {next(iter(courses_a & courses_b))}")
-    if filename >= 0.3:
-        reasons.append(f"文件名词元相似 {filename:.2f}")
-    if content >= 0.25:
-        reasons.append(f"正文关键词相似 {content:.2f}")
-    if semantic >= 0.65:
-        reasons.append(f"本地语义相似 {semantic:.2f}")
-    # Strong agreement between semantic and lexical content can identify related
-    # documents even when their filenames (for example, numbered lectures) differ.
     if semantic >= 0.82 and content >= 0.20:
         score = max(score, 0.68)
-    if source >= 0.35:
-        reasons.append(f"下载来源路径相似 {source:.2f}")
-    return score, reasons, conflicts
+    return PairAssessment(score, {
+        "course_code": 1.0 if shared_course else 0.0,
+        "filename_similarity": filename,
+        "content_similarity": content,
+        "semantic_similarity": semantic,
+        "source_url": source,
+    }, evidence, conflicts)
+
+
+def pair_score(left: IndexedFile, right: IndexedFile) -> tuple[float, list[str], list[str]]:
+    """Backward-compatible tuple API; structured callers should use assess_pair."""
+    assessment = assess_pair(left, right)
+    reasons = [item.detail for item in assessment.evidence if item.strength != "none"]
+    return assessment.total, reasons, assessment.conflicts
 
 
 def load_index(db: Database, statuses: tuple[str, ...] = ("active",)) -> list[IndexedFile]:
@@ -103,7 +159,7 @@ def add_embeddings(db: Database, files: list[IndexedFile], encoder: LocalEncoder
             pending.append(file)
     if not pending:
         return
-    texts = [(f.title + "\n" + f.summary + "\n" + f.text).strip() for f in pending]
+    texts = [(file.title + "\n" + file.summary + "\n" + file.text).strip() for file in pending]
     for file, vector in zip(pending, encoder.encode(texts)):
         file.vector = vector
         db.conn.execute(
@@ -113,57 +169,74 @@ def add_embeddings(db: Database, files: list[IndexedFile], encoder: LocalEncoder
     db.conn.commit()
 
 
-def _primary_course(file: IndexedFile) -> str:
-    strong = all_courses(file.path.stem + " " + " ".join(file.source_urls))
-    if len(strong) == 1:
-        return next(iter(strong))
-    body = COURSE_PATTERN.findall(file.text[:20_000])
-    counts = Counter(f"{a.upper()}{n}" for a, n in body)
-    repeated = [code for code, count in counts.items() if count >= 2]
-    return repeated[0] if len(repeated) == 1 else ""
-
-
 def _complete_link(clusters: list[list[IndexedFile]], threshold: float) -> list[list[IndexedFile]]:
     while True:
         best: tuple[float, int, int] | None = None
-        for i in range(len(clusters)):
-            for j in range(i + 1, len(clusters)):
-                scores = [pair_score(a, b)[0] for a in clusters[i] for b in clusters[j]]
+        for left_index in range(len(clusters)):
+            for right_index in range(left_index + 1, len(clusters)):
+                scores = [
+                    assess_pair(left, right).total
+                    for left in clusters[left_index]
+                    for right in clusters[right_index]
+                ]
                 score = min(scores) if scores else 0.0
                 if score >= threshold and (best is None or score > best[0]):
-                    best = (score, i, j)
+                    best = (score, left_index, right_index)
         if best is None:
             return clusters
-        _, i, j = best
-        clusters[i].extend(clusters[j])
-        del clusters[j]
+        _, left_index, right_index = best
+        clusters[left_index].extend(clusters[right_index])
+        del clusters[right_index]
 
 
-def _topic_name(files: list[IndexedFile]) -> str:
-    counts = Counter(word for file in files for word in file.keywords if word not in STOPWORDS)
-    words = [word for word, _ in counts.most_common(3)]
-    if words:
-        return " ".join(word.title() if word.isascii() else word for word in words)[:80]
-    stems = [_tokens(f.path.stem) for f in files]
-    common = set.intersection(*stems) if stems and all(stems) else set()
-    return " ".join(sorted(common))[:80].title() or "Related Files"
+def _metric_evidence(kind: str, score: float, course_code: str = "") -> Evidence:
+    if kind == "course_code":
+        return Evidence(kind, "strong" if course_code else "none", score,
+                        f"共同课程代码 {course_code}" if course_code else "没有共同课程代码")
+    labels = {
+        "filename_similarity": "组内文件名相似度",
+        "content_similarity": "组内正文关键词相似度",
+        "semantic_similarity": "组内本地语义相似度",
+        "source_url": "组内来源 URL 证据",
+    }
+    strength_kind = kind.removesuffix("_similarity")
+    return Evidence(kind, _strength(strength_kind, score), score, f"{labels[kind]} {score:.2f}")
 
 
-def _group_details(files: list[IndexedFile]) -> tuple[float, list[str], list[str]]:
+def _group_details(files: list[IndexedFile], course_code: str = "") -> tuple[float, list[Evidence], list[str]]:
     if len(files) < 2:
-        return 0.0, [], []
-    scores, reasons, conflicts = [], Counter(), set()
-    for i, left in enumerate(files):
-        for right in files[i + 1:]:
-            score, why, problem = pair_score(left, right)
-            scores.append(score)
-            reasons.update(why)
-            conflicts.update(problem)
+        evidence = [_metric_evidence("course_code", 1.0 if course_code else 0.0, course_code)]
+        evidence.extend(_metric_evidence(kind, 0.0) for kind in (
+            "filename_similarity", "content_similarity", "semantic_similarity", "source_url",
+        ))
+        return (0.96 if course_code else 0.0), evidence, []
+    assessments = [
+        assess_pair(left, right)
+        for index, left in enumerate(files)
+        for right in files[index + 1:]
+    ]
+    scores = [assessment.total for assessment in assessments]
     confidence = min(scores) * 0.7 + (sum(scores) / len(scores)) * 0.3
-    return confidence, [r for r, _ in reasons.most_common(4)], sorted(conflicts)
+    evidence = [_metric_evidence("course_code", 1.0 if course_code else 0.0, course_code)]
+    for kind in ("filename_similarity", "content_similarity", "semantic_similarity", "source_url"):
+        value = sum(item.metrics[kind] for item in assessments) / len(assessments)
+        evidence.append(_metric_evidence(kind, value))
+    conflicts = sorted({conflict for item in assessments for conflict in item.conflicts})
+    return confidence, evidence, conflicts
 
 
-def cluster(db: Database, settings: Settings, *, encoder: LocalEncoder | None = None) -> tuple[list[ProposedGroup], list[IndexedFile]]:
+def _new_group(files: list[IndexedFile], *, course_code: str = "") -> ProposedGroup:
+    confidence, evidence, conflicts = _group_details(files, course_code)
+    name = display_name(files, course_code)
+    return ProposedGroup(topic_key(files, course_code), name, confidence, files, evidence, conflicts)
+
+
+def cluster(
+    db: Database,
+    settings: Settings,
+    *,
+    encoder: LocalEncoder | None = None,
+) -> tuple[list[ProposedGroup], list[IndexedFile]]:
     files = load_index(db)
     prototypes = load_index(db, ("organized",))
     if encoder:
@@ -176,58 +249,62 @@ def cluster(db: Database, settings: Settings, *, encoder: LocalEncoder | None = 
     for file in files:
         row = db.conn.execute(
             """SELECT action FROM corrections WHERE file_fingerprint=? AND active=1
-            ORDER BY created_at DESC,id DESC LIMIT 1""", (file.fingerprint,)
+            ORDER BY created_at DESC,id DESC LIMIT 1""", (file.fingerprint,),
         ).fetchone()
         if row and row[0] == "exclude":
             forced_unclassified.append(file)
             assigned.add(file.id)
 
-    # Confirmed associations are immutable seeds until the user rejects or undoes them.
-    learned: dict[str, list[IndexedFile]] = {}
+    learned: dict[tuple[str, str], list[IndexedFile]] = {}
     for file in files:
         if file.id in assigned:
             continue
         row = db.conn.execute(
-            "SELECT topic_name FROM associations WHERE file_fingerprint=? AND active=1", (file.fingerprint,)
+            """SELECT a.topic_key,t.display_name
+            FROM associations a JOIN topics t ON t.topic_key=a.topic_key
+            WHERE a.file_fingerprint=? AND a.active=1""",
+            (file.fingerprint,),
         ).fetchone()
         if row:
-            learned.setdefault(row[0], []).append(file)
+            learned.setdefault((row[0], row[1]), []).append(file)
             assigned.add(file.id)
-    for name, members in learned.items():
-        confidence, reasons, conflicts = _group_details(members)
-        groups.append(ProposedGroup(name, max(0.99, confidence), members, ["人工确认的主题关联"] + reasons, conflicts))
+    for (key, name), members in learned.items():
+        confidence, evidence, conflicts = _group_details(members, _primary_course(members[0]))
+        evidence.insert(0, Evidence("manual_association", "strong", 1.0, "人工确认的主题关联"))
+        groups.append(ProposedGroup(key, name, max(0.99, confidence), members, evidence, conflicts))
 
-    # Previously organized files remain local prototypes. They influence the
-    # destination of new files but are never added to a new move plan.
-    prototype_topics: dict[str, list[IndexedFile]] = {}
+    prototype_topics: dict[tuple[str, str], list[IndexedFile]] = {}
     for prototype in prototypes:
         row = db.conn.execute(
-            "SELECT topic_name FROM associations WHERE file_fingerprint=? AND active=1",
+            """SELECT a.topic_key,t.display_name
+            FROM associations a JOIN topics t ON t.topic_key=a.topic_key
+            WHERE a.file_fingerprint=? AND a.active=1""",
             (prototype.fingerprint,),
         ).fetchone()
         if row:
-            prototype_topics.setdefault(row[0], []).append(prototype)
-    attached: dict[str, list[tuple[IndexedFile, float, list[str]]]] = {}
+            prototype_topics.setdefault((row[0], row[1]), []).append(prototype)
+    attached: dict[tuple[str, str], list[tuple[IndexedFile, PairAssessment]]] = {}
     for file in files:
         if file.id in assigned:
             continue
         matches = []
-        for topic, examples in prototype_topics.items():
-            comparisons = [pair_score(file, example) for example in examples]
-            scores = [item[0] for item in comparisons]
+        for identity, examples in prototype_topics.items():
+            comparisons = [assess_pair(file, example) for example in examples]
+            scores = [comparison.total for comparison in comparisons]
             if scores and min(scores) >= settings.cluster_threshold:
-                reasons = [reason for _, pair_reasons, _ in comparisons for reason in pair_reasons]
-                matches.append((sum(scores) / len(scores), topic, reasons))
+                matches.append((sum(scores) / len(scores), identity, comparisons))
         if len(matches) == 1:
-            score, topic, reasons = matches[0]
-            attached.setdefault(topic, []).append((file, score, reasons))
+            _, identity, comparisons = matches[0]
+            attached.setdefault(identity, []).append((file, min(comparisons, key=lambda item: item.total)))
             assigned.add(file.id)
-    for topic, matches in attached.items():
+    for (key, name), matches in attached.items():
         members = [item[0] for item in matches]
-        confidence = min(item[1] for item in matches)
-        reason_counts = Counter(reason for item in matches for reason in item[2])
-        reasons = ["匹配已确认的主题样本"] + [reason for reason, _ in reason_counts.most_common(3)]
-        groups.append(ProposedGroup(topic, confidence, members, reasons))
+        confidence = min(item[1].total for item in matches)
+        evidence = [Evidence("learned_topic", "strong", 1.0, "匹配已确认的主题样本")]
+        for kind in ("filename_similarity", "content_similarity", "semantic_similarity", "source_url"):
+            score = sum(item[1].metrics[kind] for item in matches) / len(matches)
+            evidence.append(_metric_evidence(kind, score))
+        groups.append(ProposedGroup(key, name, confidence, members, evidence))
 
     course_map: dict[str, list[IndexedFile]] = {}
     for file in files:
@@ -237,15 +314,14 @@ def cluster(db: Database, settings: Settings, *, encoder: LocalEncoder | None = 
         if code:
             course_map.setdefault(code, []).append(file)
             assigned.add(file.id)
-    # Attach an unlabelled file only when it matches every current course member sufficiently.
     for file in files:
         if file.id in assigned:
             continue
         candidates = []
         for code, members in course_map.items():
-            scores = [pair_score(file, member)[0] for member in members]
-            if scores and min(scores) >= settings.course_attach_threshold:
-                candidates.append((sum(scores) / len(scores), code))
+            assessments = [assess_pair(file, member) for member in members]
+            if assessments and min(item.total for item in assessments) >= settings.course_attach_threshold:
+                candidates.append((sum(item.total for item in assessments) / len(assessments), code))
         if len(candidates) == 1:
             course_map[candidates[0][1]].append(file)
             assigned.add(file.id)
@@ -253,45 +329,60 @@ def cluster(db: Database, settings: Settings, *, encoder: LocalEncoder | None = 
         if len(members) < 2:
             assigned.remove(members[0].id)
             continue
-        confidence, reasons, conflicts = _group_details(members)
-        groups.append(ProposedGroup(code, max(0.90, confidence), members, reasons, conflicts))
+        group = _new_group(members, course_code=code)
+        group.confidence = max(0.90, group.confidence)
+        groups.append(group)
 
-    remaining = [f for f in files if f.id not in assigned]
+    remaining = [file for file in files if file.id not in assigned]
     clusters = _complete_link([[file] for file in remaining], settings.cluster_threshold)
     unclassified = list(forced_unclassified)
-    existing_names = {g.name for g in groups}
     for members in clusters:
         if len(members) < 2:
             unclassified.extend(members)
-            continue
-        confidence, reasons, conflicts = _group_details(members)
-        name = _topic_name(members)
-        base, index = name, 2
-        while name in existing_names:
-            name, index = f"{base} {index}", index + 1
-        existing_names.add(name)
-        groups.append(ProposedGroup(name, confidence, members, reasons, conflicts))
-    return sorted(groups, key=lambda g: g.name.lower()), sorted(unclassified, key=lambda f: f.name.lower())
+        else:
+            groups.append(_new_group(members))
+    for group in groups:
+        saved = db.conn.execute(
+            "SELECT display_name FROM topics WHERE topic_key=? AND active=1", (group.topic_key,),
+        ).fetchone()
+        if saved:
+            group.display_name = saved[0]
+    return sorted(groups, key=lambda group: group.display_name.lower()), sorted(unclassified, key=lambda file: file.name.lower())
 
 
-def save_plan(db: Database, settings: Settings, groups: list[ProposedGroup], unclassified: list[IndexedFile]) -> int:
+def save_plan(
+    db: Database,
+    settings: Settings,
+    groups: list[ProposedGroup],
+    unclassified: list[IndexedFile],
+) -> int:
     now = time.time()
     with db.transaction() as conn:
-        cursor = conn.execute("INSERT INTO plans(created_at,status,config_json) VALUES(?, 'draft', ?)", (
-            now, dumps({"cluster_threshold": settings.cluster_threshold, "organized_dir": str(settings.organized_dir)}),
-        ))
+        cursor = conn.execute(
+            "INSERT INTO plans(created_at,status,config_json) VALUES(?, 'draft', ?)",
+            (now, dumps({"cluster_threshold": settings.cluster_threshold, "organized_dir": str(settings.organized_dir)})),
+        )
         plan_id = cursor.lastrowid
         for group in groups:
+            conn.execute(
+                """INSERT INTO topics(topic_key,display_name,source,active)
+                VALUES(?,?,'proposal',1)
+                ON CONFLICT(topic_key) DO UPDATE SET display_name=COALESCE(topics.display_name,excluded.display_name),active=1""",
+                (group.topic_key, group.display_name),
+            )
             for file in group.files:
                 conn.execute(
-                    """INSERT INTO plan_members(plan_id,file_id,group_name,confidence,reasons,conflicts,source_fingerprint,destination)
-                    VALUES(?,?,?,?,?,?,?,?)""",
-                    (plan_id, file.id, group.name, group.confidence, dumps(group.reasons), dumps(group.conflicts),
-                     file.fingerprint, str(settings.organized_dir / group.name / file.name)),
+                    """INSERT INTO plan_members(
+                    plan_id,file_id,topic_key,group_name,confidence,reasons,evidence,conflicts,source_fingerprint,destination
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (plan_id, file.id, group.topic_key, group.display_name, group.confidence, dumps(group.reasons),
+                     dumps([item.as_dict() for item in group.evidence]), dumps(group.conflicts), file.fingerprint,
+                     str(settings.organized_dir / group.display_name / file.name)),
                 )
         for file in unclassified:
             conn.execute(
-                "INSERT INTO plan_members(plan_id,file_id,group_name,confidence,source_fingerprint) VALUES(?,?,NULL,0,?)",
+                """INSERT INTO plan_members(plan_id,file_id,topic_key,group_name,confidence,source_fingerprint)
+                VALUES(?,?,NULL,NULL,0,?)""",
                 (plan_id, file.id, file.fingerprint),
             )
     return int(plan_id)

@@ -38,6 +38,30 @@ def test_content_and_fixed_semantic_vectors_cluster_numbered_documents(workspace
     assert len(groups) == 1
     assert {f.name for f in groups[0].files} == {"01 Introduction.md", "02 Renewable Energy.md"}
     assert not unclassified
+    assert groups[0].display_name == "Renewable Energy"
+    assert groups[0].topic_key.startswith("cluster:")
+    evidence = {item.kind: item for item in groups[0].evidence}
+    assert set(evidence) == {
+        "course_code", "filename_similarity", "content_similarity", "semantic_similarity", "source_url",
+    }
+    assert evidence["semantic_similarity"].strength == "strong"
+    assert evidence["source_url"].strength == "none"
+
+
+def test_body_course_code_groups_files_without_code_in_filename(workspace):
+    settings, db = workspace
+    put(settings.downloads, "01 Systems Overview.md", "ELEC6200 ELEC6200 autonomous control architecture")
+    put(settings.downloads, "02 Control Design.md", "ELEC6200 ELEC6200 autonomous control design")
+    scan(db, settings)
+
+    groups, unclassified = cluster(db, settings)
+
+    assert not unclassified
+    assert len(groups) == 1
+    assert groups[0].display_name == "ELEC6200"
+    assert groups[0].topic_key == "course:ELEC6200"
+    course = next(item for item in groups[0].evidence if item.kind == "course_code")
+    assert course.strength == "strong"
 
 
 def test_generic_shared_domain_is_not_enough_to_cluster(workspace, monkeypatch):
@@ -51,4 +75,3 @@ def test_generic_shared_domain_is_not_enough_to_cluster(workspace, monkeypatch):
 
     assert not groups
     assert len(unclassified) == 2
-

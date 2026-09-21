@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import time
+import uuid
 from pathlib import Path
 
 from .config import Settings
@@ -38,6 +39,20 @@ def unique_destination(path: Path, reserved: set[Path] | None = None) -> Path:
     raise RuntimeError(f"无法为 {path.name} 生成唯一目标名称")
 
 
+def ensure_topic(db: Database, display_name: str) -> str:
+    row = db.conn.execute(
+        "SELECT topic_key FROM topics WHERE display_name=? AND active=1 ORDER BY topic_key LIMIT 1", (display_name,),
+    ).fetchone()
+    if row and row[0]:
+        return str(row[0])
+    key = "topic:" + uuid.uuid4().hex
+    db.conn.execute(
+        "INSERT INTO topics(topic_key,display_name,source,active) VALUES(?,?,'manual',1)",
+        (key, display_name),
+    )
+    return key
+
+
 def plan_rows(db: Database, plan_id: int):
     return db.conn.execute(
         """SELECT m.*,f.path,f.name,f.fingerprint AS current_fingerprint,f.size,f.modified_at
@@ -66,7 +81,7 @@ def preview_moves(db: Database, settings: Settings, plan_id: int) -> list[dict[s
         stale = (not source.exists()) or row["source_fingerprint"] != row["current_fingerprint"]
         moves.append({"member_id": row["id"], "file_id": row["file_id"], "source": source,
                       "destination": destination, "fingerprint": row["source_fingerprint"], "stale": stale,
-                      "topic": row["group_name"]})
+                      "topic": row["group_name"], "topic_key": row["topic_key"]})
     return moves
 
 
@@ -104,9 +119,10 @@ def apply_plan(db: Database, settings: Settings, plan_id: int) -> tuple[int, lis
             os.rename(src, dst)
             db.conn.execute("UPDATE files SET path=?,name=?,status='organized' WHERE id=?", (str(dst), dst.name, move["file_id"]))
             db.conn.execute(
-                """INSERT INTO associations(topic_name,file_fingerprint,confirmed_at,active) VALUES(?,?,?,1)
-                ON CONFLICT(file_fingerprint) DO UPDATE SET topic_name=excluded.topic_name,confirmed_at=excluded.confirmed_at,active=1""",
-                (move["topic"], move["fingerprint"], time.time()),
+                """INSERT INTO associations(topic_key,file_fingerprint,confirmed_at,active) VALUES(?,?,?,1)
+                ON CONFLICT(file_fingerprint) DO UPDATE SET topic_key=excluded.topic_key,
+                confirmed_at=excluded.confirmed_at,active=1""",
+                (move["topic_key"], move["fingerprint"], time.time()),
             )
         except Exception as exc:
             status, error = "skipped", str(exc)
@@ -173,7 +189,16 @@ def edit_plan(db: Database, plan_id: int, command: str, args: list[str], organiz
     correction_topic: str | None = None
     if command == "rename" and len(args) >= 2:
         old, new = args[0], safe_topic_name(" ".join(args[1:]))
-        db.conn.execute("UPDATE plan_members SET group_name=? WHERE plan_id=? AND group_name=?", (new, plan_id, old))
+        keys = [row[0] for row in db.conn.execute(
+            "SELECT DISTINCT topic_key FROM plan_members WHERE plan_id=? AND group_name=? AND topic_key IS NOT NULL",
+            (plan_id, old),
+        )]
+        db.conn.execute(
+            "UPDATE plan_members SET group_name=?,destination=NULL WHERE plan_id=? AND group_name=?",
+            (new, plan_id, old),
+        )
+        for key in keys:
+            db.conn.execute("UPDATE topics SET display_name=? WHERE topic_key=?", (new, key))
         action = f"主题 {old} 已改名为 {new}"
     elif command == "exclude" and len(args) == 1:
         row = db.conn.execute(
@@ -193,12 +218,24 @@ def edit_plan(db: Database, plan_id: int, command: str, args: list[str], organiz
         if not row:
             raise ValueError("成员不存在")
         correction_fingerprint = row[0]
-        db.conn.execute("UPDATE plan_members SET group_name=?,excluded=0 WHERE plan_id=? AND id=?", (topic, plan_id, int(args[0])))
+        identity = ensure_topic(db, topic)
+        db.conn.execute(
+            "UPDATE plan_members SET topic_key=?,group_name=?,destination=NULL,excluded=0 WHERE plan_id=? AND id=?",
+            (identity, topic, plan_id, int(args[0])),
+        )
         action = f"成员 {args[0]} 已移至 {topic}"
     elif command == "merge" and len(args) >= 2:
         target = safe_topic_name(args[-1])
+        row = db.conn.execute(
+            "SELECT topic_key FROM plan_members WHERE plan_id=? AND group_name=? AND topic_key IS NOT NULL LIMIT 1",
+            (plan_id, target),
+        ).fetchone()
+        identity = str(row[0]) if row else ensure_topic(db, target)
         for source in args[:-1]:
-            db.conn.execute("UPDATE plan_members SET group_name=? WHERE plan_id=? AND group_name=?", (target, plan_id, source))
+            db.conn.execute(
+                "UPDATE plan_members SET topic_key=?,group_name=?,destination=NULL WHERE plan_id=? AND group_name=?",
+                (identity, target, plan_id, source),
+            )
         action = f"已合并到 {target}"
     elif command == "split" and len(args) >= 2:
         topic = safe_topic_name(" ".join(args[1:]))
@@ -209,7 +246,11 @@ def edit_plan(db: Database, plan_id: int, command: str, args: list[str], organiz
         if not row:
             raise ValueError("成员不存在")
         correction_fingerprint = row[0]
-        db.conn.execute("UPDATE plan_members SET group_name=?,excluded=0 WHERE plan_id=? AND id=?", (topic, plan_id, int(args[0])))
+        identity = ensure_topic(db, topic)
+        db.conn.execute(
+            "UPDATE plan_members SET topic_key=?,group_name=?,destination=NULL,excluded=0 WHERE plan_id=? AND id=?",
+            (identity, topic, plan_id, int(args[0])),
+        )
         action = f"成员 {args[0]} 已拆分到 {topic}"
     elif command == "folder" and len(args) == 2:
         folder = Path(args[1]).expanduser().resolve()

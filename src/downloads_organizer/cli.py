@@ -5,12 +5,14 @@ import shlex
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from .clustering import cluster, save_plan
+from .benchmark import run_benchmark
 from .config import Settings
 from .db import Database, loads
 from .embedding import LocalEncoder, download_model
@@ -71,9 +73,16 @@ def _render_plan(db: Database, settings: Settings, plan_id: int) -> None:
         for row in members:
             status = " [dim](excluded)[/dim]" if row["excluded"] else ""
             console.print(f"  #{row['id']} {row['name']}{status}")
-        reasons = loads(members[0]["reasons"], [])
-        if reasons:
-            console.print("  [dim]依据：" + "；".join(reasons) + "[/dim]")
+        evidence = loads(members[0]["evidence"], [])
+        if evidence:
+            for item in evidence:
+                strength = item.get("strength", "none")
+                color = {"strong": "green", "weak": "yellow", "none": "dim"}.get(strength, "dim")
+                console.print(f"  [{color}]{strength.upper():6} {item.get('detail', '')}[/{color}]")
+        else:
+            reasons = loads(members[0]["reasons"], [])
+            if reasons:
+                console.print("  [dim]依据：" + "；".join(reasons) + "[/dim]")
 
 
 @app.command()
@@ -105,6 +114,34 @@ def propose(
             console.print(f"\n审阅：downloads-organizer review {plan_id}")
     finally:
         db.close()
+
+
+@app.command()
+def benchmark(
+    fixture: Path | None = typer.Argument(None, help="fixture JSON；省略时使用内置核心数据集"),
+    json_output: bool = typer.Option(False, "--json", help="输出机器可读 JSON"),
+    min_f1: float = typer.Option(1.0, min=0.0, max=1.0, help="低于阈值时返回非零退出码"),
+) -> None:
+    """对标注 fixture 比较 expected clusters 与 predicted clusters。"""
+    result = run_benchmark(fixture)
+    if json_output:
+        typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        console.print(f"Fixture: {result['fixture']}")
+        console.print("\n[bold]Expected clusters[/bold]")
+        for name, members in result["expected_clusters"].items():
+            console.print(f"  {name}: {', '.join(members)}")
+        console.print("\n[bold]Predicted clusters[/bold]")
+        for name, members in result["predicted_clusters"].items():
+            console.print(f"  {name}: {', '.join(members)}")
+        console.print(
+            f"\nPairwise precision={result['pairwise_precision']:.4f} "
+            f"recall={result['pairwise_recall']:.4f} F1={result['pairwise_f1']:.4f}"
+        )
+        console.print(f"Exact cluster match: {result['exact_cluster_match']}")
+        console.print(f"Unclassified match: {result['unclassified_match']}")
+    if result["pairwise_f1"] < min_f1 or not result["unclassified_match"]:
+        raise typer.Exit(code=1)
 
 
 REVIEW_HELP = """命令：

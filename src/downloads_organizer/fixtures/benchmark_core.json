@@ -1,0 +1,43 @@
+{
+  "name": "TopicTidy core quality benchmark",
+  "documents": [
+    {"name": "ELEC6008 Lecture 01.md", "content": "Power electronics converters and grid control."},
+    {"name": "ELEC6008 Lecture 02.md", "content": "Power electronics inverters and grid control."},
+
+    {"name": "01 Systems Overview.md", "content": "ELEC6200 ELEC6200 autonomous control systems architecture."},
+    {"name": "02 Control Design.md", "content": "ELEC6200 ELEC6200 autonomous control systems design."},
+
+    {"name": "ELEC6103 Project Overview.md", "content": "Embedded systems project requirements."},
+    {"name": "ELEC6103 Project Plan.md", "content": "Embedded systems project schedule."},
+    {"name": "ELEC6104 Project Overview.md", "content": "Power systems project requirements."},
+    {"name": "ELEC6104 Project Plan.md", "content": "Power systems project schedule."},
+
+    {"name": "Grid Storage Design v1.pdf", "title": "Grid Storage Design", "content": "Battery grid storage design capacity safety architecture.", "vector": [0.0, 1.0, 0.0]},
+    {"name": "Grid Storage Design v2.docx", "title": "Grid Storage Design Revised", "content": "Battery grid storage design capacity safety architecture revised.", "vector": [0.0, 1.0, 0.0]},
+
+    {"name": "Large Renewable Systems Report.pdf", "title": "Renewable Systems Report", "content": "Renewable systems modelling solar wind storage performance.", "vector": [0.0, 0.0, 1.0]},
+    {"name": "Renewable Systems Appendix.md", "title": "Renewable Systems Appendix", "content": "Renewable systems modelling solar wind storage appendix.", "vector": [0.0, 0.0, 1.0]},
+
+    {"name": "tax receipt.md", "content": "Annual personal tax receipt and payment.", "source_urls": ["https://portal.example.edu/download/item"]},
+    {"name": "hotel booking.md", "content": "Hotel reservation itinerary and booking.", "source_urls": ["https://portal.example.edu/download/item"]},
+    {"name": "random.json", "content": "{\"unrelated\": true}"},
+    {"name": "installer.dmg", "content": ""},
+    {"name": "archive.zip", "content": ""}
+  ],
+  "expected_clusters": {
+    "ELEC6008": ["ELEC6008 Lecture 01.md", "ELEC6008 Lecture 02.md"],
+    "ELEC6200": ["01 Systems Overview.md", "02 Control Design.md"],
+    "ELEC6103": ["ELEC6103 Project Overview.md", "ELEC6103 Project Plan.md"],
+    "ELEC6104": ["ELEC6104 Project Overview.md", "ELEC6104 Project Plan.md"],
+    "Grid Storage": ["Grid Storage Design v1.pdf", "Grid Storage Design v2.docx"],
+    "Renewable Systems": ["Large Renewable Systems Report.pdf", "Renewable Systems Appendix.md"]
+  },
+  "expected_unclassified": [
+    "archive.zip",
+    "hotel booking.md",
+    "installer.dmg",
+    "random.json",
+    "tax receipt.md"
+  ]
+}
+

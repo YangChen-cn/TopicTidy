@@ -9,10 +9,8 @@ from platformdirs import user_data_dir
 
 APP_NAME = "DownloadsOrganizer"
 MODEL_ID = "intfloat/multilingual-e5-small"
-EXTRACTOR_VERSION = "1"
 COURSE_PATTERN = re.compile(r"(?i)(?<![A-Z0-9])([A-Z]{2,8})[\s_-]?(\d{4})(?!\d)")
 INCOMPLETE_SUFFIXES = {".crdownload", ".download", ".part", ".tmp"}
-SUPPORTED_TEXT_SUFFIXES = {".pdf", ".docx", ".pptx", ".txt", ".md", ".markdown"}
 
 
 @dataclass(frozen=True)
@@ -51,4 +49,3 @@ def normalize_course(value: str) -> str:
 
 def all_courses(value: str) -> set[str]:
     return {f"{a.upper()}{n}" for a, n in COURSE_PATTERN.findall(value)}
-

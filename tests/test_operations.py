@@ -83,3 +83,27 @@ def test_confirmed_topic_becomes_prototype_for_new_download(workspace):
     assert groups[0].name == "ELEC6008"
     assert [file.name for file in groups[0].files] == ["ELEC6008 Revision.md"]
     assert not unclassified
+
+
+def test_rename_changes_display_name_without_changing_topic_identity(workspace):
+    settings, db = workspace
+    plan_id = _course_plan(settings, db)
+    before = db.conn.execute(
+        "SELECT DISTINCT topic_key FROM plan_members WHERE plan_id=?", (plan_id,)
+    ).fetchone()[0]
+
+    edit_plan(db, plan_id, "rename", ["ELEC6008", "Power Conversion"], settings.organized_dir)
+
+    member = db.conn.execute(
+        "SELECT topic_key,group_name,destination FROM plan_members WHERE plan_id=? LIMIT 1", (plan_id,)
+    ).fetchone()
+    topic = db.conn.execute("SELECT topic_key,display_name FROM topics WHERE topic_key=?", (before,)).fetchone()
+    assert member["topic_key"] == before
+    assert member["group_name"] == "Power Conversion"
+    assert member["destination"] is None
+    assert topic["topic_key"] == before
+    assert topic["display_name"] == "Power Conversion"
+
+    groups, _ = cluster(db, settings)
+    assert groups[0].topic_key == before
+    assert groups[0].display_name == "Power Conversion"

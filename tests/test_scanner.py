@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 from downloads_organizer.scanner import candidates, scan
 
 from conftest import put
