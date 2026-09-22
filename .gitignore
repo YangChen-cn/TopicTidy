@@ -1,13 +1,6 @@
 .DS_Store
-.venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.coverage
+.build/
+.swiftpm/
 dist/
-build/
-*.egg-info/
-
-
-macos/.build/
-macos/.swiftpm/
+*.xcodeproj
+.migration-baseline/

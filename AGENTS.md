@@ -6,21 +6,18 @@ TopicTidy is a local macOS Downloads organizer. It groups files by course, proje
 
 The CLI and user-facing explanations are Chinese by default. Source code, identifiers, and developer documentation may use English.
 
-## Architecture Boundaries
+The product is a pure native Swift package. There is no Python runtime, no helper subprocess, and no JSON bridge; `Sources/TopicTidyCore` is the single implementation shared by the `tt` CLI and the SwiftUI app.
 
-- `scanner.py` owns directory enumeration, fingerprints, cache lookup, and persistence. It may depend on the `ExtractorRegistry` interface but must not import PDF, DOCX, or PPTX libraries.
-- `extractors/` owns document-format integrations. Every extractor implements `DocumentExtractor`, declares a cache version, enforces the supplied text budget, and returns `Extracted` rather than leaking library-specific objects.
-- `metadata.py` owns macOS metadata such as `kMDItemWhereFroms`.
-- `text_features.py` owns shared token, keyword, and URL feature helpers. Clustering must not import concrete extractors.
-- `clustering.py` owns pair assessment, conservative clustering, evidence aggregation, and plan creation.
-- `embedding.py` owns the `SemanticEncoder` interface and macOS-native implementation. The default path must not download models or install Python ML frameworks.
-- `semantic_text.py` owns the bounded representative text used by both native and pivot embeddings. Do not send full extracted documents to Translation.
-- `translation.py` owns installed-only Apple Translation integration, pivot caching, and graceful language-asset fallback. It must never request or initiate a language download.
-- `topic_naming.py` owns display-name generation and internal topic-key generation. Never use a display name as the durable topic identity.
-- `operations.py` owns plan edits, file moves, durable operation intent, recovery, and undo.
-- `preferences.py` owns persisted destination and auto-confirm settings. `workflow.py` and `automation.py` expose application services shared by CLI and future GUI callers.
-- `scheduler.py` owns the user LaunchAgent lifecycle. It must invoke the application service rather than duplicate scan, classification, or move logic.
-- `benchmark.py` and packaged fixtures protect clustering quality when weights or naming logic change.
+## Layout
+
+- `Sources/TopicTidyCore/Config` owns `Settings`, the course-code pattern, and path resolution. `Support/PythonCompat.swift` provides the CPython-compatible string semantics the clustering rules were written against; use those helpers (`Py`, `OrderedCounter`, `PyPath`) instead of Swift's default grapheme-cluster behaviour whenever a rule is ported from the original specification.
+- `Sources/TopicTidyCore/Database` owns the SQLite3 wrapper and schema. Rows are materialised value types; never keep a statement pointer alive past materialisation.
+- `Sources/TopicTidyCore/Scanner` owns directory enumeration, fingerprints, cache lookup, provenance metadata, and persistence. It may depend on the `ExtractorRegistry` interface but must not import PDFKit or OOXML specifics.
+- `Sources/TopicTidyCore/Extractors` owns document-format integrations. Every extractor implements `DocumentExtractor`, declares a cache version, enforces the supplied text budget, and returns `Extracted`. `MiniZip` + `XMLParser` provide the minimal OOXML reader; do not add a third-party ZIP or Office dependency.
+- `Sources/TopicTidyCore/Semantic` owns `SemanticEncoder`, the `NLEmbedding` implementation, the installed-only Apple Translation backend, and the bounded representative text. Nothing here may download models or language assets.
+- `Sources/TopicTidyCore/Clustering` owns pair assessment, conservative clustering, evidence aggregation, naming, and plan creation. `ClusterCache` may memoise pure per-file derivations; it must never cache anything that depends on another file or on the database.
+- `Sources/TopicTidyCore/Operations` owns plan edits, file moves, durable operation intent, recovery, undo, preferences, the LaunchAgent scheduler, the daily automation service, and `AppService` (the request/response facade the GUI uses).
+- `Sources/tt` is the CLI. `Sources/TopicTidy` is the SwiftUI menu bar client; it maps core values onto presentation models and must not reimplement classification or filesystem work.
 
 ## Core Invariants
 
@@ -39,38 +36,41 @@ The CLI and user-facing explanations are Chinese by default. Source code, identi
 - Cross-language recall without lexical clues must stay bounded by nearest-neighbor and per-proposal limits; course conflicts remain hard negatives.
 - `topic_key` is durable identity; `display_name` is editable presentation. Rename operations must preserve `topic_key`.
 - Confidence values are heuristic scores, not calibrated probabilities.
-- The project is still pre-user. Do not add backward database migrations yet. Change the current schema and bump `SCHEMA_VERSION`; incompatible local test databases may be deleted and rebuilt.
+- The project is still pre-user. Do not add backward database migrations yet. Change the current schema and bump `Database.schemaVersion`; incompatible local test databases may be deleted and rebuilt.
 - Interrupted apply/auto-apply recovery must restore both file state and the plan's topic association after a completed rename.
+- The GUI must keep presenting the exact saved-plan preview it was confirmed with; `AppService` re-validates the submitted move list before applying.
+
+## Behaviour Changes Require Evidence
+
+The clustering rules, thresholds, evidence wording, and naming logic were migrated one-to-one from the previous implementation. Do not retune weights or redesign the algorithm as part of unrelated work. When changing them intentionally:
+
+- update or extend the benchmark fixture and explain the expected-output change;
+- refresh the frozen golden outputs in `Tests/TopicTidyCoreTests/Fixtures`;
+- keep `tt benchmark` and `tt benchmark Resources/fixtures/holdout_unseen.json` green.
+
+`Resources/fixtures/*.json` is the editable source of truth; `Tests/TopicTidyCoreTests/FixtureTests.swift` fails if the embedded Swift copies drift from it.
 
 ## Development
 
-Use Python 3.12+ in `.venv` and keep dependencies pinned in `pyproject.toml`.
-
 ```bash
-source .venv/bin/activate
-python -m pip install -e '.[dev]'
-pytest
-tt benchmark
-python -m pip wheel . --no-deps --wheel-dir /tmp/topictidy-wheel-check
+swift build
+swift test
+swift build -c release && .build/release/tt benchmark --json
+scripts/build_app.sh                    # signed .app + DMG + size report
 ```
 
 Before committing, require:
 
-- the complete pytest suite passes;
-- the core benchmark meets its checked-in F1 threshold and unclassified set;
+- the full `swift test` suite passes;
+- the core benchmark meets its checked-in F1 threshold and unclassified set, and the holdout fixture keeps precision 1.0 with F1 ≥ 0.94;
 - `git diff --check` passes;
-- a wheel builds and includes the packaged benchmark fixture;
 - CLI JSON output remains machine-readable and contains topic identity plus structured evidence.
-
-When adding a file format, add an extractor-focused test. When changing clustering weights or naming, update or extend the benchmark fixture and explain any intentional expected-output change.
 
 ## Native macOS client
 
-- `macos/` is the SwiftUI menu bar client. Keep filesystem mutations and classification in the Python application services.
-- `gui_bridge.py` is a local JSON transport; acquire the application lock before recovery, reads, edits, and moves.
-- GUI apply must present the exact saved-plan preview and submit confirmation plus that preview; reject changed previews.
-- Build with `swift build --package-path macos`; package using `.venv/bin/python macos/scripts/build_app.py`.
-- UI verification must use isolated Downloads/state directories; the distributed app must embed its runtime and helpers, never depend on the repository virtual environment or developer paths.
-- Preserve bundle signatures: use isolated Python with bytecode writes disabled, including scheduled runs. Sign nested Mach-O code before signing the app; validate relocation and `codesign --verify --deep --strict`.
-
+- Build with `swift build`; package with `scripts/build_app.sh`.
+- The bundle must stay pure native: `Contents/MacOS/TopicTidy` plus `Contents/Resources/tt` and the icon. `scripts/build_app.sh` fails the build if Python files, a `python` directory, or build-host paths appear in the bundle.
+- The daily LaunchAgent invokes the bundled `tt`; keep `LaunchAgentScheduler.executablePath()` working for both the app bundle and a source build.
+- UI verification must use isolated Downloads/state directories.
+- Preserve bundle signatures: sign nested Mach-O code before signing the app; validate with `codesign --verify --deep --strict`.
 - GUI visual acceptance is manual by the user. Do not use Computer Use by default; validate builds, service contracts, and distribution with command-line tools. Keep the menu bar panel compact with content-driven height.

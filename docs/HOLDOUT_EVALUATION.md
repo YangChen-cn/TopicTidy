@@ -17,7 +17,9 @@ holdout 共 42 个半真实文件，其中 22 个属于 8 个预标注主题，2
 运行方式：
 
 ```bash
-tt benchmark src/downloads_organizer/fixtures/holdout_unseen.json --min-f1 0.94
+tt benchmark Resources/fixtures/holdout_unseen.json --min-f1 0.94
 ```
+
+迁移到原生 Swift Core 后重新运行同一 fixture，结果不变（同样的 8 个主题、20 个未分类、precision/recall/F1 均为 1.0）；冻结的参考输出保存在 `Tests/TopicTidyCoreTests/Fixtures/benchmark-holdout-golden.json`。
 
 这是一套独立安全回归集，不替代核心 benchmark，也不表示对未知 Downloads 的统计准确率。

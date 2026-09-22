@@ -1,0 +1,178 @@
+// Generated from Resources/fixtures/*.json. See TopicTidyCoreTests for the
+// equality test that keeps these embedded copies in sync with the JSON files.
+import Foundation
+
+public enum FixtureData {
+    public enum Name: String {
+        case core = "benchmark_core"
+        case holdout = "holdout_unseen"
+    }
+
+    public static func json(for name: Name) -> String {
+        switch name {
+        case .core: return core
+        case .holdout: return holdout
+        }
+    }
+
+    static let core = #"""
+{
+  "name": "TopicTidy core quality benchmark",
+  "documents": [
+    {"name": "ELEC6008 Lecture 01.md", "content": "Power electronics converters and grid control."},
+    {"name": "ELEC6008 Lecture 02.md", "content": "Power electronics inverters and grid control."},
+
+    {"name": "01 Systems Overview.md", "content": "ELEC6200 ELEC6200 autonomous control systems architecture."},
+    {"name": "02 Control Design.md", "content": "ELEC6200 ELEC6200 autonomous control systems design."},
+
+    {"name": "ELEC6103 Project Overview.md", "content": "Embedded systems project requirements."},
+    {"name": "ELEC6103 Project Plan.md", "content": "Embedded systems project schedule."},
+    {"name": "ELEC6104 Project Overview.md", "content": "Power systems project requirements."},
+    {"name": "ELEC6104 Project Plan.md", "content": "Power systems project schedule."},
+
+    {"name": "Grid Storage Design v1.pdf", "title": "Grid Storage Design", "content": "Battery grid storage design capacity safety architecture.", "vector": [0.0, 1.0, 0.0]},
+    {"name": "Grid Storage Design v2.docx", "title": "Grid Storage Design Revised", "content": "Battery grid storage design capacity safety architecture revised.", "vector": [0.0, 1.0, 0.0]},
+
+    {"name": "Large Renewable Systems Report.pdf", "title": "Renewable Systems Report", "content": "Renewable systems modelling solar wind storage performance.", "vector": [0.0, 0.0, 1.0]},
+    {"name": "Renewable Systems Appendix.md", "title": "Renewable Systems Appendix", "content": "Renewable systems modelling solar wind storage appendix.", "vector": [0.0, 0.0, 1.0]},
+
+    {"name": "电池储能概论.md", "title": "电池储能概论", "content": "电池储能系统的容量、安全与电网调度。", "native_space": "zh-Hans", "pivot_vector": [0.6, 0.8, 0.0], "translated_content": "Battery storage systems capacity safety and grid dispatch."},
+    {"name": "Reference Notes.md", "title": "Reference Notes", "content": "Battery storage systems capacity safety and grid operations.", "native_space": "en", "pivot_vector": [0.6, 0.8, 0.0]},
+
+    {"name": "cs229-notes1.md", "title": "CS229 Linear Models", "content": "Linear regression likelihood and optimization.", "vector": [0.7, 0.7, 0.0]},
+    {"name": "cs229-deep-learning.md", "title": "CS229 Deep Learning", "content": "Neural network backpropagation and representation learning.", "vector": [0.7, 0.7, 0.0]},
+
+    {"name": "01-memory.md", "title": "FreeRTOS Memory Management", "content": "Heap allocation and task stacks.", "vector": [0.8, 0.6, 0.0]},
+    {"name": "02-queues.md", "title": "FreeRTOS Queues", "content": "Queue messages between concurrent tasks.", "vector": [0.8, 0.6, 0.0]},
+    {"name": "03-timers.md", "title": "FreeRTOS Software Timers", "content": "Timer callbacks and scheduler behavior.", "vector": [0.8, 0.6, 0.0]},
+
+    {"name": "README.md", "title": "Embedded Linux Notes", "content": "# Embedded Linux Notes\n[Processes](01-processes.md)\n[Files](02-files.md)\n[Signals](03-signals.md)"},
+    {"name": "01-processes.md", "content": "fork exec process lifecycle"},
+    {"name": "02-files.md", "content": "open read write file descriptors"},
+    {"name": "03-signals.md", "content": "sigaction interrupt handling"},
+
+    {"name": "tax receipt.md", "content": "Annual personal tax receipt and payment.", "source_urls": ["https://portal.example.edu/download/item"]},
+    {"name": "hotel booking.md", "content": "Hotel reservation itinerary and booking.", "source_urls": ["https://portal.example.edu/download/item"]},
+    {"name": "citation-noise.md", "content": "HAVE1000 TASK1000 NOTES2021 ORNL2005 are citation and prose artifacts, not course codes."},
+    {"name": "random.json", "content": "{\"unrelated\": true}"},
+    {"name": "installer.dmg", "content": ""},
+    {"name": "archive.zip", "content": ""}
+  ],
+  "expected_clusters": {
+    "ELEC6008": ["ELEC6008 Lecture 01.md", "ELEC6008 Lecture 02.md"],
+    "ELEC6200": ["01 Systems Overview.md", "02 Control Design.md"],
+    "ELEC6103": ["ELEC6103 Project Overview.md", "ELEC6103 Project Plan.md"],
+    "ELEC6104": ["ELEC6104 Project Overview.md", "ELEC6104 Project Plan.md"],
+    "Grid Storage": ["Grid Storage Design v1.pdf", "Grid Storage Design v2.docx"],
+    "Renewable Systems": ["Large Renewable Systems Report.pdf", "Renewable Systems Appendix.md"],
+    "Cross-language Storage": ["电池储能概论.md", "Reference Notes.md"],
+    "CS229": ["cs229-notes1.md", "cs229-deep-learning.md"],
+    "FreeRTOS": ["01-memory.md", "02-queues.md", "03-timers.md"],
+    "Embedded Linux Notes": ["README.md", "01-processes.md", "02-files.md", "03-signals.md"]
+  },
+  "expected_unclassified": [
+    "archive.zip",
+    "citation-noise.md",
+    "hotel booking.md",
+    "installer.dmg",
+    "random.json",
+    "tax receipt.md"
+  ]
+}
+
+"""#
+
+    static let holdout = #"""
+{
+  "name": "TopicTidy unseen safety holdout",
+  "documents": [
+    {"name": "COMP4101 Lecture 01 Graph Search.md", "content": "Graph search frontiers, breadth first search and path cost."},
+    {"name": "COMP4101 Lecture 02 Heuristics.md", "content": "Heuristic search, admissibility and A star evaluation."},
+    {"name": "01 Assignment Brief.md", "title": "COMP4101 Assignment Brief", "content": "COMP4101 COMP4101 implement a route planning search agent."},
+
+    {"name": "COMP4102 Lecture 01 Graph Search.md", "content": "Graph search frontiers, breadth first search and path cost."},
+    {"name": "COMP4102 Lecture 02 Heuristics.md", "content": "Heuristic search, admissibility and A star evaluation."},
+    {"name": "02 Assignment Brief.md", "title": "COMP4102 Assignment Brief", "content": "COMP4102 COMP4102 implement a route planning search agent."},
+
+    {"name": "README-Atlas42.md", "title": "Atlas42 Project Index", "content": "# Atlas42 Project Index\n[Design](Atlas42-design.md)\n[Tests](Atlas42-tests.md)\n[Release](Atlas42-release.md)"},
+    {"name": "Atlas42-design.md", "title": "Atlas42 Mechanical Design", "content": "Enclosure tolerances, fasteners and weather sealing."},
+    {"name": "Atlas42-tests.md", "title": "Atlas42 Validation Tests", "content": "Ingress testing, vibration protocol and acceptance limits."},
+    {"name": "Atlas42-release.md", "title": "Atlas42 Release Checklist", "content": "Manufacturing handoff, packaging and shipping approval."},
+
+    {"name": "Harbor Sensor Field Report v1.pdf", "title": "Harbor Sensor Field Report", "content": "Coastal salinity sensor calibration enclosure and field deployment.", "vector": [0.0, 1.0, 0.0, 0.0]},
+    {"name": "Harbor Sensor Field Report revised.docx", "title": "Harbor Sensor Field Report Revised", "content": "Coastal salinity sensor calibration enclosure and revised field deployment.", "vector": [0.0, 1.0, 0.0, 0.0]},
+
+    {"name": "Battery Storage Safety.md", "title": "Battery Storage Safety", "content": "Battery storage thermal safety monitoring and emergency isolation.", "native_space": "en", "pivot_vector": [0.6, 0.8, 0.0, 0.0]},
+    {"name": "电池储能安全指南.md", "title": "电池储能安全指南", "content": "电池储能系统的热安全监测、消防和紧急隔离。", "native_space": "zh-Hans", "pivot_vector": [0.6, 0.8, 0.0, 0.0], "translated_content": "Battery storage thermal safety monitoring fire protection and emergency isolation."},
+
+    {"name": "index.md", "title": "Personal Reference Index", "content": "# Personal Reference Index\n[Budget](budget.md)\n[Travel](travel.md)\n[Recipe](recipe.md)"},
+    {"name": "budget.md", "content": "monthly household spending and utility totals"},
+    {"name": "travel.md", "content": "train reservations and museum opening times"},
+    {"name": "recipe.md", "content": "sourdough starter feeding and oven temperature"},
+
+    {"name": "ECON5001 Project Overview.md", "content": "Panel data estimation and labour market outcomes."},
+    {"name": "ECON5001 Project Results.md", "content": "Panel data estimates and labour market robustness checks."},
+    {"name": "ECON5002 Project Overview.md", "content": "Panel data estimation and labour market outcomes."},
+    {"name": "ECON5002 Project Results.md", "content": "Panel data estimates and labour market robustness checks."},
+
+    {"name": "report.md", "content": "annual personal tax filing receipt"},
+    {"name": "final-report-energy.md", "content": "solar inverter efficiency and power quality measurements"},
+    {"name": "project.md", "content": "community theatre volunteer schedule"},
+    {"name": "project-ocean-cleanup.md", "content": "coastal waste collection logistics"},
+    {"name": "notes.md", "content": "dentist appointment and prescription reminder"},
+    {"name": "notes-bayesian-statistics.md", "content": "posterior distributions and prior predictive checks"},
+
+    {"name": "tax-statement.pdf", "content": "income tax statement and withholding", "source_urls": ["https://portal.example.edu/download/item/100"]},
+    {"name": "dorm-booking.pdf", "content": "student residence room booking", "source_urls": ["https://portal.example.edu/download/item/200"]},
+    {"name": "cafeteria-menu.pdf", "content": "weekly lunch menu and allergens", "source_urls": ["https://portal.example.edu/download/item/300"]},
+
+    {"name": "AlphaGrid solar forecast.md", "content": "solar irradiance forecast for an urban distribution grid"},
+    {"name": "BetaFarm solar forecast.md", "content": "solar irradiance forecast for an agricultural microgrid"},
+
+    {"name": "random.json", "content": "{\"theme\": \"dark\", \"enabled\": true}"},
+    {"name": "installer.dmg", "content": ""},
+    {"name": "archive.zip", "content": ""},
+    {"name": "IMG_2048.jpg", "content": ""},
+    {"name": "boarding-pass.pdf", "content": "flight boarding pass seat and gate"},
+    {"name": "resume.docx", "content": "employment history and professional skills"},
+    {"name": "invoice.pdf", "content": "equipment purchase invoice and payment due"},
+    {"name": "cooking-recipes.md", "content": "pasta sauce vegetables and baking instructions"},
+    {"name": "meeting-minutes.md", "content": "neighbourhood committee meeting actions"}
+  ],
+  "expected_clusters": {
+    "COMP4101": ["COMP4101 Lecture 01 Graph Search.md", "COMP4101 Lecture 02 Heuristics.md", "01 Assignment Brief.md"],
+    "COMP4102": ["COMP4102 Lecture 01 Graph Search.md", "COMP4102 Lecture 02 Heuristics.md", "02 Assignment Brief.md"],
+    "Atlas42": ["README-Atlas42.md", "Atlas42-design.md", "Atlas42-tests.md", "Atlas42-release.md"],
+    "Harbor Sensor": ["Harbor Sensor Field Report v1.pdf", "Harbor Sensor Field Report revised.docx"],
+    "Cross-language Battery Safety": ["Battery Storage Safety.md", "电池储能安全指南.md"],
+    "Personal Reference Index": ["index.md", "budget.md", "travel.md", "recipe.md"],
+    "ECON5001": ["ECON5001 Project Overview.md", "ECON5001 Project Results.md"],
+    "ECON5002": ["ECON5002 Project Overview.md", "ECON5002 Project Results.md"]
+  },
+  "expected_unclassified": [
+    "report.md",
+    "final-report-energy.md",
+    "project.md",
+    "project-ocean-cleanup.md",
+    "notes.md",
+    "notes-bayesian-statistics.md",
+    "tax-statement.pdf",
+    "dorm-booking.pdf",
+    "cafeteria-menu.pdf",
+    "AlphaGrid solar forecast.md",
+    "BetaFarm solar forecast.md",
+    "random.json",
+    "installer.dmg",
+    "archive.zip",
+    "IMG_2048.jpg",
+    "boarding-pass.pdf",
+    "resume.docx",
+    "invoice.pdf",
+    "cooking-recipes.md",
+    "meeting-minutes.md"
+  ]
+}
+
+"""#
+
+}

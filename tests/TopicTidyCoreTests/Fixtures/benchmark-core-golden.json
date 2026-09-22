@@ -1,0 +1,58 @@
+{
+ "pairwise_f1": 1.0,
+ "pairwise_precision": 1.0,
+ "pairwise_recall": 1.0,
+ "predicted_clusters": {
+  "CS229": [
+   "cs229-deep-learning.md",
+   "cs229-notes1.md"
+  ],
+  "ELEC6008": [
+   "ELEC6008 Lecture 01.md",
+   "ELEC6008 Lecture 02.md"
+  ],
+  "ELEC6103": [
+   "ELEC6103 Project Overview.md",
+   "ELEC6103 Project Plan.md"
+  ],
+  "ELEC6104": [
+   "ELEC6104 Project Overview.md",
+   "ELEC6104 Project Plan.md"
+  ],
+  "ELEC6200": [
+   "01 Systems Overview.md",
+   "02 Control Design.md"
+  ],
+  "Embedded Linux Notes": [
+   "01-processes.md",
+   "02-files.md",
+   "03-signals.md",
+   "README.md"
+  ],
+  "FreeRTOS": [
+   "01-memory.md",
+   "02-queues.md",
+   "03-timers.md"
+  ],
+  "Grid Storage Design": [
+   "Grid Storage Design v1.pdf",
+   "Grid Storage Design v2.docx"
+  ],
+  "Reference": [
+   "Reference Notes.md",
+   "电池储能概论.md"
+  ],
+  "Renewable Systems": [
+   "Large Renewable Systems Report.pdf",
+   "Renewable Systems Appendix.md"
+  ]
+ },
+ "predicted_unclassified": [
+  "archive.zip",
+  "citation-noise.md",
+  "hotel booking.md",
+  "installer.dmg",
+  "random.json",
+  "tax receipt.md"
+ ]
+}
