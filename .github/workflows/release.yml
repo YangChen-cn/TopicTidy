@@ -41,9 +41,13 @@ jobs:
           CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
           CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
         run: |
+          # A published release must always carry the same signature. Without
+          # the certificate the packaging scripts would silently fall back to
+          # ad-hoc, so stop here instead.
           if [ -z "$CERTIFICATE_P12" ]; then
-            echo "::warning::no signing certificate configured, builds will be ad-hoc signed"
-            exit 0
+            echo "::error::CERTIFICATE_P12 is not configured; refusing to publish an ad-hoc signed release."
+            echo "Export the TopicTidy identity as .p12, base64 it, and store it with CERTIFICATE_PASSWORD."
+            exit 1
           fi
           keychain="$RUNNER_TEMP/topictidy.keychain-db"
           echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
@@ -54,7 +58,14 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k actions "$keychain" > /dev/null
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/cert.p12"
-          security find-identity -v -p codesigning || true
+          # `find-identity -v` hides self-signed certificates, so prove the
+          # identity works by actually signing something.
+          cp /bin/echo "$RUNNER_TEMP/signing-check"
+          codesign --force --sign TopicTidy --timestamp=none "$RUNNER_TEMP/signing-check" \
+            || { echo "::error::cannot sign with the TopicTidy identity"; exit 1; }
+          codesign -dv --verbose=2 "$RUNNER_TEMP/signing-check" 2>&1 | grep -q "Authority=TopicTidy" \
+            || { echo "::error::signing check did not produce a TopicTidy signature"; exit 1; }
+          echo "signing identity ready: TopicTidy"
 
       - name: Test
         run: swift test
@@ -90,6 +101,8 @@ jobs:
         run: |
           cd dist
           codesign -dv --verbose=2 TopicTidy.app 2>&1 | grep -E "Authority|Signature=" || true
+          codesign -dv --verbose=2 TopicTidy.app 2>&1 | grep -q "Authority=TopicTidy" \
+            || { echo "::error::release app is not signed with TopicTidy"; exit 1; }
           [ ! -e python ] || { echo "::error::a Python runtime leaked into the build"; exit 1; }
           tar -tzf topictidy-cli-*-arm64.tar.gz
           dmg=$(ls TopicTidy-*-arm64.dmg)
@@ -111,3 +124,27 @@ jobs:
             dist/TopicTidy-*-arm64.dmg \
             dist/topictidy-cli-*-arm64.tar.gz \
             dist/SHA256SUMS.txt
+
+  # Keeps the tap pinned to the artefacts GitHub actually published; it needs a
+  # token that can write to YangChen-cn/homebrew-tap.
+  tap:
+    needs: release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check tap token
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$TAP_GITHUB_TOKEN" ]; then
+            echo "::error::TAP_GITHUB_TOKEN is not configured; cannot update the Homebrew tap."
+            echo "Add a PAT with write access to YangChen-cn/homebrew-tap as TAP_GITHUB_TOKEN."
+            exit 1
+          fi
+
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: scripts/publish_tap.sh --version "${GITHUB_REF_NAME#v}"

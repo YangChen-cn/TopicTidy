@@ -23,7 +23,7 @@
 
 **提取器字符级相等**：真实 DOCX/PPTX/PDF 的 `title`、`keywords`、`summary`、`text` 与 Python 参考输出逐字符相同（`Tests/TopicTidyCoreTests/Extractors`）。
 
-**测试**：迁移前 Python 侧 `pytest` 72 项全部通过；迁移后 Swift 侧 66 项测试覆盖同一批断言（scanner、extractors、clustering、operations、automation、preferences、AppService 契约、benchmark 门禁）。
+**测试**：迁移前 Python 侧 `pytest` 72 项全部通过；迁移后 Swift 侧 75 项测试覆盖同一批断言（后续新增了取消分组、AppService 契约与关于页渲染）（scanner、extractors、clustering、operations、automation、preferences、AppService 契约、benchmark 门禁）。
 
 ## 实测对比
 
@@ -45,7 +45,7 @@ GUI 请求由"每次启动 Python 子进程 + JSON 往返"改为进程内调用�
 | 分发物 | 迁移前 | 迁移后 | 减少 |
 | --- | ---: | ---: | ---: |
 | `TopicTidy.app` | 86.1 MiB | 5.97 MiB | 93.1% |
-| `TopicTidy-0.9.0-arm64.dmg` | 43.1 MiB | 3.19 MiB | 92.6% |
+| `TopicTidy-<版本>-arm64.dmg` | 43.1 MiB | 3.19 MiB | 92.6% |
 
 应用内原有 84.9 MiB 的 Python runtime 与两个 helper；现在只剩 `Contents/MacOS/TopicTidy`、`Contents/Resources/tt` 和应用图标。
 
@@ -61,4 +61,4 @@ GUI 请求由"每次启动 Python 子进程 + JSON 往返"改为进程内调用�
 
 - 用户数据目录中由旧版本写入的 `~/Library/Application Support/DownloadsOrganizer/bin/`（Python 时代编译的 helper）已不再被使用，可以手动删除；数据库本身无需重建，schema 版本仍为 6，原生核心直接打开了 Python 写入的现有数据库。
 - 仓库根目录的 `.venv/` 是迁移期的 Python 参考环境，已被 `.gitignore` 忽略，保留用于将来复核；它不参与构建与分发。
-- `dist/` 中旧版本的 Python wheel/sdist 属于迁移前产物，可以删除。
+- 迁移前的 Python wheel/sdist 已从 `dist/` 删除，PyPI 发布入口（`pyproject.toml`、`scripts/verify_distribution.py`、发布 workflow）也已移除。

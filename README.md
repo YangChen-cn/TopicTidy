@@ -66,11 +66,11 @@ brew install --cask YangChen-cn/tap/topictidy-cli
 curl -fsSL https://raw.githubusercontent.com/YangChen-cn/TopicTidy/main/install.sh | sh
 ```
 
-可用 `TOPICTIDY_VERSION=0.10.0` 指定版本，`TOPICTIDY_INSTALL_DIR` 指定安装目录。
+可用 `TOPICTIDY_VERSION=0.10.1` 指定版本，`TOPICTIDY_INSTALL_DIR` 指定安装目录。
 
 ### DMG
 
-1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-0.10.0-arm64.dmg`。
+1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-0.10.1-arm64.dmg`。
 2. 打开 DMG，把 TopicTidy 拖入 Applications。
 3. 启动后点击菜单栏托盘图标。
 
@@ -121,7 +121,7 @@ tt semantic status
 | `.dmg` | 43.1 MiB | 3.19 MiB | 92.6% |
 <!-- SIZE_TABLE_END -->
 
-上表由 `scripts/build_app.sh` 对同一份应用实测生成；原始字节数保存在 `dist/TopicTidy-0.10.0-size-report.json`。完整的速度与等价性对比见 [docs/MIGRATION.md](docs/MIGRATION.md)。
+上表由 `scripts/build_app.sh` 对同一份应用实测生成；原始字节数保存在 `dist/TopicTidy-<版本>-size-report.json`。完整的速度与等价性对比见 [docs/MIGRATION.md](docs/MIGRATION.md)。
 
 ## 工作原理
 
@@ -151,7 +151,7 @@ scripts/generate_release_notes.sh   # 生成 Release Notes（tag 区间 commit�
 scripts/publish_tap.sh --dry-run    # 渲染 Homebrew tap（不推送）
 ```
 
-发布：打 `v*` 标签即触发 `.github/workflows/release.yml`——导入签名证书、跑测试与基准、**只编译一次** release 二进制（App 与 CLI 复用）、生成 Release Notes 与 `SHA256SUMS.txt`，最后创建 GitHub Release。普通分支推送只触发 `tests.yml`，`v*` 标签不会再重复跑一遍 Tests。
+发布：打 `v*` 标签即触发 `.github/workflows/release.yml`——校验 tag 与版本、导入签名证书（缺失即失败）、跑测试与基准、**只编译一次** release 二进制（App 与 CLI 复用）、生成 Release Notes 与 `SHA256SUMS.txt`、创建 GitHub Release，最后用 `scripts/publish_tap.sh` 把 Homebrew tap 更新到该版本。普通分支推送只触发 `tests.yml`，`v*` 标签不会再重复跑一遍 Tests。
 
 测试与基准必须使用临时 Downloads 目录，绝不指向真实的 `~/Downloads`。
 

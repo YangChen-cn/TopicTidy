@@ -7,6 +7,9 @@
 # no user can ever match.
 #
 # Usage: scripts/publish_tap.sh [--version X.Y.Z] [--local] [--dry-run] [--no-push]
+#
+# Set TAP_GITHUB_TOKEN (or GH_TOKEN) to push to the tap from CI; without it the
+# developer's own git credentials are used.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -91,11 +94,19 @@ fi
 
 echo "==> preparing $TAP_REPOSITORY"
 WORK="$STAGING/checkout"
-if ! git clone --quiet "https://github.com/$TAP_REPOSITORY.git" "$WORK" 2>/dev/null; then
+# In CI the release workflow supplies a token that can write to the tap; the
+# token is never echoed and the URL is only used for this one push.
+TOKEN="${TAP_GITHUB_TOKEN:-${GH_TOKEN:-}}"
+CLONE_URL="https://github.com/$TAP_REPOSITORY.git"
+PUSH_URL="$CLONE_URL"
+if [ -n "$TOKEN" ]; then
+  PUSH_URL="https://x-access-token:$TOKEN@github.com/$TAP_REPOSITORY.git"
+fi
+if ! git clone --quiet "$CLONE_URL" "$WORK" 2>/dev/null; then
   echo "==> tap repository not found, creating it"
   gh repo create "$TAP_REPOSITORY" --public \
     --description "Homebrew tap for TopicTidy" > /dev/null
-  git clone --quiet "https://github.com/$TAP_REPOSITORY.git" "$WORK"
+  git clone --quiet "$CLONE_URL" "$WORK"
 fi
 
 mkdir -p "$WORK/Casks"
@@ -118,5 +129,5 @@ git -C "$WORK" add -A
 git -C "$WORK" -c user.name="$(git config user.name || echo TopicTidy)" \
   -c user.email="$(git config user.email || echo noreply@github.com)" \
   commit --quiet -m "TopicTidy ${VERSION}"
-git -C "$WORK" push --quiet origin HEAD
+git -C "$WORK" push --quiet "$PUSH_URL" HEAD:main
 echo "==> pushed to https://github.com/$TAP_REPOSITORY"
