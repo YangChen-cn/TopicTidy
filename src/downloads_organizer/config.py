@@ -22,6 +22,9 @@ class Settings:
     downloads: Path
     data_dir: Path
     organized_name: str = "Organized"
+    organized_root: Path | None = None
+    auto_confirm_enabled: bool = False
+    auto_confirm_threshold: float = 0.92
     max_text_chars: int = 120_000
     stable_seconds: float = 2.0
     cluster_threshold: float = 0.64
@@ -51,13 +54,15 @@ class Settings:
 
     @property
     def organized_dir(self) -> Path:
-        return self.downloads / self.organized_name
+        return self.organized_root or (self.downloads / self.organized_name)
 
     @classmethod
     def load(cls) -> "Settings":
         downloads = Path(os.getenv("DOWNLOADS_ORGANIZER_DOWNLOADS", "~/Downloads")).expanduser()
         data = Path(os.getenv("DOWNLOADS_ORGANIZER_HOME", user_data_dir(APP_NAME))).expanduser()
-        return cls(downloads=downloads.resolve(), data_dir=data.resolve())
+        destination = os.getenv("DOWNLOADS_ORGANIZER_DESTINATION")
+        organized_root = Path(destination).expanduser().resolve() if destination else None
+        return cls(downloads=downloads.resolve(), data_dir=data.resolve(), organized_root=organized_root)
 
 
 def normalize_course(value: str) -> str:

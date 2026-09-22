@@ -1,6 +1,6 @@
 # TopicTidy
 
-TopicTidy 是一个面向 macOS 的本地智能 Downloads Organizer。它不会按扩展名粗暴分类，而是综合课程号、文件名、下载来源、文档内容和本地语义向量，为 `~/Downloads` 生成可解释的主题分组。文件只会在你审阅并确认方案后移动，且每个批次都可以验证后撤销。
+TopicTidy 是一个面向 macOS 的本地智能 Downloads Organizer。它不会按扩展名粗暴分类，而是综合课程号、文件名、下载来源、文档内容和本地语义向量，为 `~/Downloads` 生成可解释的主题分组。默认仍由你审阅并确认方案；也可以显式启用高置信度自动确认。每次移动都有保存的方案和操作日志，并可验证后撤销。
 
 ## 安装
 
@@ -41,6 +41,7 @@ tt apply 1
 tt history
 tt undo 1
 tt benchmark
+tt config show
 ```
 
 `scan` 只读取 Downloads 顶层文件。它忽略目录、符号链接、隐藏文件、`Organized` 和 `.crdownload`、`.download`、`.part`、`.tmp` 等未完成下载。支持 PDF、DOCX、PPTX、TXT 和 Markdown 文本提取；扫描件不做 OCR。提取器通过注册表插拔，扫描器不依赖具体文档库。大型 PDF 只读取前几页、代表性中间页和末尾页，并在文本预算内停止。
@@ -56,13 +57,43 @@ review: exclude 12
 review: done
 ```
 
-`apply` 会再次显示实际目标路径并请求确认。也可在自动化测试中使用 `--yes`。目标固定在 `~/Downloads/Organized` 内；同名文件使用稳定的 ` (2)`、` (3)` 后缀，永不覆盖。方案生成后发生变化的源文件会被跳过。
+`apply` 会再次显示实际目标路径并请求确认。也可在自动化测试中使用 `--yes`。同名文件使用稳定的 ` (2)`、` (3)` 后缀，永不覆盖。方案生成后发生变化的源文件会被跳过。
+
+整理根目录默认为 `~/Downloads/Organized`，可改为同一磁盘上的其他位置：
+
+```bash
+tt config destination ~/Documents/TopicTidy
+tt config show
+```
+
+目标根目录会写入方案快照，因此修改设置不会改变已经保存的旧方案。目录不能直接等于 Downloads，也不能是符号链接；当前版本仍使用同卷 rename，跨磁盘目标会在执行时安全跳过。
+
+高置信度自动确认默认关闭。启用后，每日任务只自动执行达到阈值且无冲突的完整分组；低分组、未分类文件和过期文件保持原位。置信度是启发式评分，建议先使用默认 `0.92`：
+
+```bash
+tt config auto-confirm --enable --threshold 0.92
+tt config auto-confirm --disable
+tt auto run                 # 立即运行一次，便于验证设置
+tt auto run --json          # 供 GUI 或其他本地调用方读取
+```
+
+启用自动确认是一项持久授权。每次自动移动仍会先保存方案，并以 `auto_apply` 批次记录到 `history`，可以照常用 `tt undo <batch-id>` 撤销。
 
 `watch` 使用 macOS FSEvents 前台监控，合并事件并等待文件稳定后更新索引，不会自动移动文件：
 
 ```bash
 tt watch --interval 300
 ```
+
+每日自动扫描使用当前 macOS 用户的 LaunchAgent，无需保持终端打开：
+
+```bash
+tt schedule enable --at 09:00
+tt schedule status
+tt schedule disable
+```
+
+每日任务始终执行扫描。只有另外启用了 `auto-confirm` 时，它才会生成方案并自动移动高置信度分组。LaunchAgent 调用当前虚拟环境的 Python；删除或移动该虚拟环境后需要重新执行 `schedule enable`。日志位于应用数据目录的 `logs/`。
 
 ## 数据与配置
 
@@ -71,6 +102,7 @@ SQLite 数据库、约 100 KB 的原生 helper 和进程锁默认保存在 `~/Li
 ```bash
 export DOWNLOADS_ORGANIZER_DOWNLOADS=/tmp/demo/Downloads
 export DOWNLOADS_ORGANIZER_HOME=/tmp/demo/state
+export DOWNLOADS_ORGANIZER_DESTINATION=/tmp/demo/Organized
 ```
 
 不要把 `DOWNLOADS_ORGANIZER_DOWNLOADS` 指向需要递归整理的目录；首版只处理该目录的顶层普通文件。人工确认的文件指纹与主题关联会用于未来建议。撤销成功后，对应学习关联会停用。

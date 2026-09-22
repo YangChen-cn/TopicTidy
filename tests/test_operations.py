@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from downloads_organizer.clustering import cluster, save_plan
 from downloads_organizer.operations import apply_plan, edit_plan, preview_moves, undo_batch
 from downloads_organizer.scanner import scan
@@ -107,3 +109,21 @@ def test_rename_changes_display_name_without_changing_topic_identity(workspace):
     groups, _ = cluster(db, settings)
     assert groups[0].topic_key == before
     assert groups[0].display_name == "Power Conversion"
+
+
+def test_plan_keeps_custom_destination_after_setting_changes(workspace, tmp_path):
+    settings, db = workspace
+    custom = tmp_path / "Sorted Files"
+    original_settings = replace(settings, organized_root=custom)
+    plan_id = _course_plan(original_settings, db)
+    changed_settings = replace(settings, organized_root=tmp_path / "Somewhere Else")
+
+    preview = preview_moves(db, changed_settings, plan_id)
+    assert all(str(item["destination"]).startswith(str(custom)) for item in preview)
+
+    batch_id, results = apply_plan(db, changed_settings, plan_id)
+    assert all(item["status"] == "moved" for item in results)
+    assert (custom / "ELEC6008" / "ELEC6008 Chapter 1.md").exists()
+
+    _, undone = undo_batch(db, changed_settings, batch_id)
+    assert all(item["status"] == "undone" for item in undone)

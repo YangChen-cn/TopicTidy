@@ -6,9 +6,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS app_settings(
+ key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS files(
  id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, name TEXT NOT NULL, extension TEXT NOT NULL,
  size INTEGER NOT NULL, created_at REAL NOT NULL, modified_at REAL NOT NULL,

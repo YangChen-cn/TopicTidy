@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 
 from .config import Settings
-from .db import Database
+from .db import Database, loads
 from .scanner import fingerprint
 
 SAFE_COMPONENT = re.compile(r"[/:\x00]")
@@ -61,20 +61,29 @@ def plan_rows(db: Database, plan_id: int):
     ).fetchall()
 
 
-def preview_moves(db: Database, settings: Settings, plan_id: int) -> list[dict[str, object]]:
-    plan = db.conn.execute("SELECT * FROM plans WHERE id=?", (plan_id,)).fetchone()
+def plan_destination_root(db: Database, settings: Settings, plan_id: int) -> Path:
+    plan = db.conn.execute("SELECT config_json FROM plans WHERE id=?", (plan_id,)).fetchone()
     if not plan:
         raise ValueError(f"方案 {plan_id} 不存在")
+    config = loads(plan["config_json"], {})
+    root = Path(config.get("organized_dir") or settings.organized_dir).expanduser().resolve()
+    if root == settings.downloads.resolve():
+        raise RuntimeError("整理根目录不能直接等于 Downloads")
+    return root
+
+
+def preview_moves(db: Database, settings: Settings, plan_id: int) -> list[dict[str, object]]:
+    organized_root = plan_destination_root(db, settings, plan_id)
     reserved: set[Path] = set()
     moves = []
     for row in plan_rows(db, plan_id):
         if row["excluded"] or not row["group_name"]:
             continue
         source = Path(row["path"])
-        folder = settings.organized_dir / safe_topic_name(row["group_name"])
+        folder = organized_root / safe_topic_name(row["group_name"])
         if row["destination"]:
             proposed_folder = Path(row["destination"]).parent
-            if within(proposed_folder, settings.organized_dir):
+            if within(proposed_folder, organized_root):
                 folder = proposed_folder
         destination = unique_destination(folder / source.name, reserved)
         reserved.add(destination)
@@ -85,14 +94,25 @@ def preview_moves(db: Database, settings: Settings, plan_id: int) -> list[dict[s
     return moves
 
 
-def apply_plan(db: Database, settings: Settings, plan_id: int) -> tuple[int, list[dict[str, str]]]:
-    if settings.organized_dir.is_symlink() or not within(settings.organized_dir, settings.downloads):
-        raise RuntimeError("Organized 目录必须是 Downloads 内的真实目录，不能是符号链接")
+def apply_plan(
+    db: Database,
+    settings: Settings,
+    plan_id: int,
+    *,
+    operation_kind: str = "apply",
+) -> tuple[int, list[dict[str, str]]]:
+    organized_root = plan_destination_root(db, settings, plan_id)
+    if organized_root.is_symlink():
+        raise RuntimeError("整理根目录不能是符号链接")
+    if organized_root.exists() and not organized_root.is_dir():
+        raise RuntimeError("整理根目录已存在，但不是目录")
+    if operation_kind not in {"apply", "auto_apply"}:
+        raise ValueError("不支持的整理操作类型")
     moves = preview_moves(db, settings, plan_id)
     now = time.time()
     cursor = db.conn.execute(
-        "INSERT INTO operation_batches(plan_id,kind,status,created_at) VALUES(?, 'apply', 'running', ?)",
-        (plan_id, now),
+        "INSERT INTO operation_batches(plan_id,kind,status,created_at) VALUES(?, ?, 'running', ?)",
+        (plan_id, operation_kind, now),
     )
     batch_id = int(cursor.lastrowid)
     results: list[dict[str, str]] = []
@@ -109,11 +129,11 @@ def apply_plan(db: Database, settings: Settings, plan_id: int) -> tuple[int, lis
         try:
             if move["stale"] or not src.is_file() or fingerprint(src) != move["fingerprint"]:
                 raise RuntimeError("文件在方案生成后已改变或已消失")
-            if not within(src, settings.downloads) or not within(dst, settings.organized_dir):
+            if not within(src, settings.downloads) or not within(dst, organized_root):
                 raise RuntimeError("移动路径越出允许范围")
-            if src.stat().st_dev != settings.downloads.stat().st_dev:
-                raise RuntimeError("首版仅允许同卷移动")
             dst.parent.mkdir(parents=True, exist_ok=True)
+            if src.stat().st_dev != dst.parent.stat().st_dev:
+                raise RuntimeError("当前版本仅允许同卷移动；请选择同一磁盘上的整理目录")
             if dst.exists():
                 raise RuntimeError("目标文件已存在")
             os.rename(src, dst)
@@ -141,8 +161,9 @@ def apply_plan(db: Database, settings: Settings, plan_id: int) -> tuple[int, lis
 
 def undo_batch(db: Database, settings: Settings, batch_id: int) -> tuple[int, list[dict[str, str]]]:
     original = db.conn.execute("SELECT * FROM operation_batches WHERE id=?", (batch_id,)).fetchone()
-    if not original or original["kind"] != "apply":
+    if not original or original["kind"] not in {"apply", "auto_apply"}:
         raise ValueError(f"找不到可撤销的整理批次 {batch_id}")
+    organized_root = plan_destination_root(db, settings, int(original["plan_id"]))
     rows = db.conn.execute(
         "SELECT * FROM operation_logs WHERE batch_id=? AND status='moved' ORDER BY id DESC", (batch_id,)
     ).fetchall()
@@ -167,7 +188,7 @@ def undo_batch(db: Database, settings: Settings, batch_id: int) -> tuple[int, li
                 raise RuntimeError("已整理文件缺失或内容已改变")
             if original_path.exists():
                 raise RuntimeError("原路径已被占用")
-            if not within(current, settings.organized_dir) or not within(original_path, settings.downloads):
+            if not within(current, organized_root) or not within(original_path, settings.downloads):
                 raise RuntimeError("撤销路径越出允许范围")
             original_path.parent.mkdir(parents=True, exist_ok=True)
             os.rename(current, original_path)
@@ -255,7 +276,7 @@ def edit_plan(db: Database, plan_id: int, command: str, args: list[str], organiz
     elif command == "folder" and len(args) == 2:
         folder = Path(args[1]).expanduser().resolve()
         if organized_dir is None or not within(folder, organized_dir):
-            raise ValueError("主题目录必须位于 Organized 内")
+            raise ValueError("主题目录必须位于当前方案的整理根目录内")
         db.conn.execute(
             "UPDATE plan_members SET destination=? || '/' || (SELECT name FROM files WHERE id=plan_members.file_id) WHERE plan_id=? AND group_name=?",
             (str(folder), plan_id, args[0]),

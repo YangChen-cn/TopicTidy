@@ -18,11 +18,15 @@ The CLI and user-facing explanations are Chinese by default. Source code, identi
 - `translation.py` owns installed-only Apple Translation integration, pivot caching, and graceful language-asset fallback. It must never request or initiate a language download.
 - `topic_naming.py` owns display-name generation and internal topic-key generation. Never use a display name as the durable topic identity.
 - `operations.py` owns plan edits, file moves, durable operation intent, recovery, and undo.
+- `preferences.py` owns persisted destination and auto-confirm settings. `workflow.py` and `automation.py` expose application services shared by CLI and future GUI callers.
+- `scheduler.py` owns the user LaunchAgent lifecycle. It must invoke the application service rather than duplicate scan, classification, or move logic.
 - `benchmark.py` and packaged fixtures protect clustering quality when weights or naming logic change.
 
 ## Core Invariants
 
 - Never scan recursively, follow symlinks, overwrite an existing file, or move a file without an explicit saved plan and user confirmation.
+- Persisted auto-confirm enablement is explicit ongoing confirmation. It may move only complete conflict-free groups at or above the configured threshold, after saving a plan and durable intent; it must remain off by default.
+- A plan must retain its destination root. Changing the current preference must never retarget an existing plan or break undo for an earlier batch.
 - Tests and benchmarks must use temporary Downloads directories. Never point automated validation at the real `~/Downloads`.
 - PDF extraction must not read every page of a large document. Preserve front pages, representative middle pages, and tail pages within `max_chars`.
 - An unchanged size/mtime does not make an extraction cache valid by itself. Scanner cache hits must also match the file fingerprint and current extractor cache version.
