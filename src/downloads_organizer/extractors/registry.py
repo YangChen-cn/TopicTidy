@@ -7,6 +7,7 @@ from .office import DocxExtractor, PptxExtractor
 from .pdf import PdfExtractor
 from .plain import PlainTextExtractor
 from ..models import Extracted
+from ..text_features import TEXT_FEATURE_VERSION
 
 
 class ExtractorRegistry:
@@ -21,7 +22,8 @@ class ExtractorRegistry:
 
     def cache_version(self, path: Path) -> str:
         extractor = self.for_path(path)
-        return f"{extractor.name}:{extractor.version}" if extractor else "metadata-only:1"
+        extractor_version = f"{extractor.name}:{extractor.version}" if extractor else "metadata-only:1"
+        return f"{extractor_version};text-features:{TEXT_FEATURE_VERSION}"
 
     def extract(self, path: Path, max_chars: int) -> Extracted:
         extractor = self.for_path(path)
@@ -35,4 +37,3 @@ class ExtractorRegistry:
 
 def default_registry() -> ExtractorRegistry:
     return ExtractorRegistry([PdfExtractor(), DocxExtractor(), PptxExtractor(), PlainTextExtractor()])
-

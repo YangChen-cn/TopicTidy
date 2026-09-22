@@ -11,7 +11,7 @@ def test_core_benchmark_detects_expected_clusters_without_false_merges():
     assert result["pairwise_f1"] == 1.0
     assert result["exact_cluster_match"]
     assert result["unclassified_match"]
-    assert result["predicted_clusters"]["Grid Storage"] == [
+    assert result["predicted_clusters"]["Grid Storage Design"] == [
         "Grid Storage Design v1.pdf",
         "Grid Storage Design v2.docx",
     ]

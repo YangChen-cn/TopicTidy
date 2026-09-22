@@ -29,7 +29,7 @@ tt semantic prepare
 
 每个文件保留原语言的 native embedding。不同原生语言空间不会直接比较；`propose` 只为跨语言候选构造约 2400 字符的代表性短文本。候选优先来自文件名、正文或来源路径；完全没有词面线索时，每个文件至少探索 1 个最近的跨语言文件，14 天窗口内最多探索 2 个近邻。每轮最多生成 24 个新 pivot，已有缓存不占额度，因此后续 propose 可以继续覆盖尚未探索的候选，而不会退化成一次性全量翻译。英文短文本直接进入 English NLEmbedding，其他语言仅在对应 Translation 语言对已经安装时翻译到 English，再生成 pivot embedding。14 天内零词面线索的 pair 需要至少 0.88 的跨语言语义相似度才可独立成组，窗口外要求至少 0.92。macOS 26+ 支持命令行 helper 的 installed-only 翻译；旧系统会安全降级。任何未安装或不支持的语言对都不会触发下载，也不会让建议生成失败。
 
-扫描缓存同时校验文件指纹与 extractor version。即使文件大小和 mtime 没变，只要 extractor version 更新，也会重新提取并清除对应 native/pivot 语义缓存。
+扫描缓存同时校验文件指纹、extractor version 和共享文本特征版本。即使文件大小和 mtime 没变，只要提取器或关键词逻辑更新，也会重新提取并清除对应 native/pivot 语义缓存。
 
 ## 使用
 
@@ -47,6 +47,8 @@ tt config show
 `scan` 只读取 Downloads 顶层文件。它忽略目录、符号链接、隐藏文件、`Organized` 和 `.crdownload`、`.download`、`.part`、`.tmp` 等未完成下载。支持 PDF、DOCX、PPTX、TXT 和 Markdown 文本提取；扫描件不做 OCR。提取器通过注册表插拔，扫描器不依赖具体文档库。大型 PDF 只读取前几页、代表性中间页和末尾页，并在文本预算内停止。
 
 `propose --json` 适合脚本和未来 GUI。每个主题同时包含稳定的 `topic_id`、可修改的 `display_name`，以及 course code、文件名、正文、原生语义、跨语言语义和来源 URL 六类结构化证据。证据区分 `strong`、`weak` 和 `none`；跨语言命中会显示类似 `跨语言语义相似度 0.84（zh-Hans → en）` 的独立依据。默认启用零下载的 macOS 原生语义 backend；`propose --no-semantic` 会同时跳过 native 和 pivot 语义计算。
+
+系列文件名中的稳定标识（例如 `CS229`）、标题中的产品/项目标识（例如 `FreeRTOS`）以及 Markdown README/索引对当前文件的明确链接都可作为保守的系列证据。普通领域词组和同一下载域名仍不能单独触发合并。
 
 `review` 提供 `list`、`rename`、`move`、`split`、`merge`、`exclude` 和 `folder` 命令。含空格的主题名需要使用引号，例如：
 
@@ -137,4 +139,4 @@ DOWNLOADS_ORGANIZER_HOME=/tmp/organizer-demo/state \
 tt propose --no-semantic
 ```
 
-更多实现边界见 [架构说明](docs/ARCHITECTURE.md)。
+更多实现边界见 [架构说明](docs/ARCHITECTURE.md)，50 文件真实语料测试见 [真实文件评估](docs/REAL_WORLD_EVALUATION.md)。

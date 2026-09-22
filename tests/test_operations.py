@@ -99,12 +99,15 @@ def test_rename_changes_display_name_without_changing_topic_identity(workspace):
     member = db.conn.execute(
         "SELECT topic_key,group_name,destination FROM plan_members WHERE plan_id=? LIMIT 1", (plan_id,)
     ).fetchone()
-    topic = db.conn.execute("SELECT topic_key,display_name FROM topics WHERE topic_key=?", (before,)).fetchone()
+    topic = db.conn.execute(
+        "SELECT topic_key,display_name,source FROM topics WHERE topic_key=?", (before,)
+    ).fetchone()
     assert member["topic_key"] == before
     assert member["group_name"] == "Power Conversion"
     assert member["destination"] is None
     assert topic["topic_key"] == before
     assert topic["display_name"] == "Power Conversion"
+    assert topic["source"] == "manual"
 
     groups, _ = cluster(db, settings)
     assert groups[0].topic_key == before

@@ -219,7 +219,10 @@ def edit_plan(db: Database, plan_id: int, command: str, args: list[str], organiz
             (new, plan_id, old),
         )
         for key in keys:
-            db.conn.execute("UPDATE topics SET display_name=? WHERE topic_key=?", (new, key))
+            db.conn.execute(
+                "UPDATE topics SET display_name=?,source='manual' WHERE topic_key=?",
+                (new, key),
+            )
         action = f"主题 {old} 已改名为 {new}"
     elif command == "exclude" and len(args) == 1:
         row = db.conn.execute(

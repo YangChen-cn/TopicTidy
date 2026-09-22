@@ -130,3 +130,44 @@ def test_generic_shared_domain_is_not_enough_to_cluster(workspace, monkeypatch):
 
     assert not groups
     assert len(unclassified) == 2
+
+
+def test_distinctive_series_token_and_semantics_join_different_chapters(workspace):
+    settings, db = workspace
+    put(settings.downloads, "cs229-notes1.md", "linear regression likelihood optimization")
+    put(settings.downloads, "cs229-deep-learning.md", "neural network backpropagation representation")
+    scan(db, settings)
+    vector = json.dumps([1.0, 0.0]).encode()
+    db.conn.execute(
+        "UPDATE features SET native_embedding=?,native_embedding_space='test',model_version='test-fixed'",
+        (vector,),
+    )
+    db.conn.commit()
+
+    groups, unclassified = cluster(db, settings)
+
+    assert not unclassified
+    assert len(groups) == 1
+    assert groups[0].display_name == "CS229"
+
+
+def test_markdown_index_links_form_a_bounded_collection(workspace):
+    settings, db = workspace
+    put(settings.downloads, "README.md", """# Embedded Linux Notes
+[Processes](01-processes.md)\n[Files](02-files.md)\n[Signals](03-signals.md)
+""")
+    put(settings.downloads, "01-processes.md", "fork exec process lifecycle")
+    put(settings.downloads, "02-files.md", "open read write descriptors")
+    put(settings.downloads, "03-signals.md", "sigaction interrupt handling")
+    put(settings.downloads, "unrelated.md", "holiday packing list")
+    scan(db, settings)
+
+    groups, unclassified = cluster(db, settings)
+
+    assert len(groups) == 1
+    assert groups[0].display_name == "Embedded Linux Notes"
+    assert {file.name for file in groups[0].files} == {
+        "README.md", "01-processes.md", "02-files.md", "03-signals.md",
+    }
+    assert groups[0].evidence[0].kind == "document_links"
+    assert [file.name for file in unclassified] == ["unrelated.md"]

@@ -9,6 +9,7 @@ from downloads_organizer.extractors.office import DocxExtractor
 from downloads_organizer.extractors.pdf import PdfExtractor, sampled_page_indices
 from downloads_organizer.models import Extracted
 from downloads_organizer.scanner import scan
+from downloads_organizer.text_features import TEXT_FEATURE_VERSION
 
 from conftest import put
 
@@ -33,7 +34,11 @@ def test_scanner_accepts_pluggable_extractor_without_format_library_dependency(w
 
     assert stats["scanned"] == 1
     feature = db.conn.execute("SELECT extractor_version,text,title FROM features").fetchone()
-    assert dict(feature) == {"extractor_version": "custom:7", "text": "plugged in", "title": "Custom Title"}
+    assert dict(feature) == {
+        "extractor_version": f"custom:7;text-features:{TEXT_FEATURE_VERSION}",
+        "text": "plugged in",
+        "title": "Custom Title",
+    }
 
 
 def test_docx_extractor_reads_real_document_with_budget(tmp_path):
@@ -80,4 +85,3 @@ def test_large_pdf_samples_front_middle_and_tail_without_reading_every_page(tmp_
     assert "PAGE-99" in result.text
     assert len(result.text) <= 320
     assert result.truncated
-

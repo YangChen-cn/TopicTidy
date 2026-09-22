@@ -17,7 +17,7 @@ from .config import Settings
 from .db import Database
 from .embedding import NativeMacOSEncoder
 from .models import IndexedFile
-from .semantic_text import build_semantic_text
+from .semantic_text import build_semantic_text, semantic_cache_version
 
 
 @dataclass(frozen=True)
@@ -159,12 +159,17 @@ def ensure_pivot_embeddings(
     translated: dict[int, tuple[str, str]] = {}
     fresh: list[IndexedFile] = []
     for file in pending:
+        current_semantic_text = build_semantic_text(file)
         cached = db.conn.execute(
-            """SELECT source_language,translated_text,translation_version
+            """SELECT source_language,semantic_text,translated_text,translation_version
             FROM semantic_pivots WHERE file_id=? AND fingerprint=? AND target_language=?""",
             (file.id, file.fingerprint, target),
         ).fetchone()
-        if cached and cached["source_language"] == file.vector_space:
+        if (
+            cached
+            and cached["source_language"] == file.vector_space
+            and cached["semantic_text"] == current_semantic_text
+        ):
             translated[file.id] = (cached["translated_text"], cached["translation_version"])
         else:
             fresh.append(file)
@@ -208,7 +213,7 @@ def ensure_pivot_embeddings(
         file.pivot_vector = result.vector
         file.pivot_space = result.space
         file.pivot_source_language = file.vector_space
-        file.pivot_embedding_version = encoder.version
+        file.pivot_embedding_version = semantic_cache_version(encoder.version)
         db.conn.execute(
             """INSERT INTO semantic_pivots(
             file_id,fingerprint,source_language,target_language,semantic_text,translated_text,
@@ -224,7 +229,7 @@ def ensure_pivot_embeddings(
                 file.id, file.fingerprint, file.vector_space, target,
                 build_semantic_text(file), translated_text, translation_version,
                 json.dumps(result.vector).encode("utf-8") if result.vector is not None else None,
-                result.space, encoder.version, time.time(),
+                result.space, semantic_cache_version(encoder.version), time.time(),
             ),
         )
     db.conn.commit()

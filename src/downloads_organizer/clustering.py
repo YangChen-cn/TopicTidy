@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections import Counter
 from dataclasses import dataclass
@@ -10,15 +11,16 @@ from urllib.parse import urlparse
 from .config import (
     COURSE_PATTERN,
     CROSS_LANGUAGE_TIME_WINDOW_SECONDS,
-    NON_COURSE_PREFIXES,
     Settings,
     all_courses,
+    body_courses,
+    is_body_course_candidate,
 )
 from .db import Database, dumps, loads
 from .embedding import SemanticEncoder
 from .models import Evidence, IndexedFile, ProposedGroup
-from .semantic_text import build_semantic_text
-from .text_features import url_tokens, tokenize
+from .semantic_text import build_semantic_text, semantic_cache_version, semantic_language
+from .text_features import document_reference_names, url_tokens, tokenize
 from .topic_naming import display_name, topic_key
 from .translation import TranslationBackend, ensure_pivot_embeddings
 
@@ -38,6 +40,34 @@ def _tokens(value: str) -> set[str]:
 
 def _jaccard(left: set[str], right: set[str]) -> float:
     return len(left & right) / len(left | right) if left and right else 0.0
+
+
+def _overlap(left: set[str], right: set[str]) -> float:
+    return len(left & right) / min(len(left), len(right)) if left and right else 0.0
+
+
+def _series_title_tokens(value: str) -> set[str]:
+    """Return identifier-like title tokens, such as FreeRTOS or CS229.
+
+    Ordinary phrases like "machine learning" are intentionally excluded: they
+    describe a field, but do not establish that two files belong to one series.
+    """
+    result = set()
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9]{2,}", value):
+        has_mixed_case = any(char.islower() for char in token) and any(char.isupper() for char in token[1:])
+        if any(char.isdigit() for char in token) or has_mixed_case:
+            result.add(token.casefold())
+    return result
+
+
+def _document_link_targets(file: IndexedFile, candidates: list[IndexedFile]) -> list[IndexedFile]:
+    """Resolve explicit Markdown/wiki links to other indexed top-level files."""
+    names, stems = document_reference_names(file.text)
+    return [
+        candidate for candidate in candidates
+        if candidate.id != file.id
+        and (candidate.name.casefold() in names or candidate.path.stem.casefold() in stems)
+    ]
 
 
 def _cosine(left: list[float] | None, right: list[float] | None) -> float:
@@ -66,11 +96,14 @@ def _primary_course(file: IndexedFile) -> str:
     strong = all_courses(file.path.stem + " " + " ".join(file.source_urls))
     if len(strong) == 1:
         return next(iter(strong))
+    title_courses = body_courses(file.title)
+    if len(title_courses) == 1:
+        return next(iter(title_courses))
     body = COURSE_PATTERN.findall(file.text[:20_000])
     counts = Counter(
         f"{prefix.upper()}{number}"
         for prefix, number in body
-        if prefix.upper() not in NON_COURSE_PREFIXES
+        if is_body_course_candidate(prefix.upper(), number)
     )
     repeated = [code for code, count in counts.items() if count >= 2]
     return repeated[0] if len(repeated) == 1 else ""
@@ -82,7 +115,7 @@ def _body_course_candidates(file: IndexedFile) -> set[str]:
     A single body occurrence is deliberately only a candidate.  It becomes
     strong evidence when another document independently exposes the same code.
     """
-    return all_courses(" ".join((file.title, file.summary, file.text[:20_000])))
+    return body_courses(" ".join((file.title, file.summary, file.text[:20_000])))
 
 
 def _declared_course(file: IndexedFile) -> str:
@@ -122,8 +155,14 @@ def _time_gap(left: IndexedFile, right: IndexedFile) -> float:
 
 
 def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
-    filename = _jaccard(_tokens(left.path.stem), _tokens(right.path.stem))
-    content = _jaccard(set(left.keywords), set(right.keywords))
+    left_filename = _tokens(left.path.stem)
+    right_filename = _tokens(right.path.stem)
+    filename = max(_jaccard(left_filename, right_filename), _overlap(left_filename, right_filename))
+    left_content = set(left.keywords) | _tokens(" ".join((left.title, left.summary[:600])))
+    right_content = set(right.keywords) | _tokens(" ".join((right.title, right.summary[:600])))
+    content = _jaccard(left_content, right_content)
+    if _series_title_tokens(left.title) & _series_title_tokens(right.title):
+        content = max(content, 0.50)
     same_native_space = bool(left.vector_space and left.vector_space == right.vector_space)
     semantic = _cosine(left.vector, right.vector) if same_native_space else 0.0
     cross_semantic = 0.0
@@ -169,6 +208,12 @@ def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
     if shared_course:
         score = max(score, 0.96)
     if semantic_for_score >= 0.82 and content >= 0.20:
+        score = max(score, 0.68)
+    if semantic_for_score >= 0.60 and content >= 0.25:
+        score = max(score, 0.65)
+    if semantic_for_score >= 0.82 and filename >= 0.50:
+        score = max(score, 0.68)
+    if filename >= 0.50 and source >= 0.50:
         score = max(score, 0.68)
     if semantic_for_score >= 0.78 and source >= 0.50:
         score = max(score, 0.68)
@@ -234,22 +279,31 @@ def load_index(db: Database, statuses: tuple[str, ...] = ("active",)) -> list[In
 
 
 def add_embeddings(db: Database, files: list[IndexedFile], encoder: SemanticEncoder) -> None:
+    cache_version = semantic_cache_version(encoder.version)
     pending = []
     for file in files:
         row = db.conn.execute("SELECT model_version FROM features WHERE file_id=?", (file.id,)).fetchone()
-        if file.text and (not file.vector or not row or row[0] != encoder.version):
+        if file.text and (not file.vector or not row or row[0] != cache_version):
             file.vector = None
             pending.append(file)
     if not pending:
         return
-    texts = [build_semantic_text(file) for file in pending]
-    for file, encoded in zip(pending, encoder.encode(texts)):
+    encoded_by_id = {}
+    language_groups: dict[str, list[IndexedFile]] = {}
+    for file in pending:
+        language_groups.setdefault(semantic_language(file), []).append(file)
+    for language, members in language_groups.items():
+        texts = [build_semantic_text(file) for file in members]
+        for file, encoded in zip(members, encoder.encode_in_language(texts, language)):
+            encoded_by_id[file.id] = encoded
+    for file in pending:
+        encoded = encoded_by_id[file.id]
         file.vector = encoded.vector
         file.vector_space = encoded.space
         db.conn.execute(
             "UPDATE features SET native_embedding=?,native_embedding_space=?,model_version=? WHERE file_id=?",
             (json.dumps(encoded.vector).encode("utf-8") if encoded.vector is not None else None,
-             encoded.space, encoder.version, file.id),
+             encoded.space, cache_version, file.id),
         )
     db.conn.commit()
 
@@ -417,7 +471,7 @@ def cluster(
         if translator:
             all_files = files + prototypes
             for file in all_files:
-                if file.pivot_embedding_version != encoder.version:
+                if file.pivot_embedding_version != semantic_cache_version(encoder.version):
                     file.pivot_vector = None
                     file.pivot_space = None
             candidate_ids = _pivot_candidate_ids(all_files, settings)
@@ -547,6 +601,33 @@ def cluster(
         group.confidence = max(0.90, group.confidence)
         groups.append(group)
 
+    # A local index/README that explicitly links several present documents is
+    # strong collection evidence. Process the largest hubs first and never use
+    # transitive links, so one bridge document cannot chain unrelated groups.
+    available = [file for file in files if file.id not in assigned]
+    linked_collections = []
+    for hub in available:
+        linked = _document_link_targets(hub, available)
+        if len(linked) >= 3:
+            members = [hub, *linked]
+            declared = {code for member in members if (code := _declared_course(member))}
+            if len(declared) <= 1:
+                linked_collections.append((len(members), hub, members))
+    for _, hub, candidates in sorted(linked_collections, key=lambda item: (-item[0], item[1].id)):
+        members = [member for member in candidates if member.id not in assigned]
+        if hub.id in assigned or len(members) < 4:
+            continue
+        group = _new_group(members)
+        if hub.title and hub.path.stem.casefold() in {"readme", "index", "contents", "toc"}:
+            group.display_name = hub.title.strip()[:80]
+        group.confidence = max(group.confidence, 0.92)
+        group.evidence.insert(0, Evidence(
+            "document_links", "strong", 1.0,
+            f"{hub.name} 明确链接组内 {len(members) - 1} 个文件",
+        ))
+        groups.append(group)
+        assigned.update(member.id for member in members)
+
     remaining = [file for file in files if file.id not in assigned]
     clusters = _complete_link([[file] for file in remaining], settings.cluster_threshold)
     unclassified = list(forced_unclassified)
@@ -557,7 +638,7 @@ def cluster(
             groups.append(_new_group(members))
     for group in groups:
         saved = db.conn.execute(
-            "SELECT display_name FROM topics WHERE topic_key=? AND active=1", (group.topic_key,),
+            "SELECT display_name FROM topics WHERE topic_key=? AND active=1 AND source='manual'", (group.topic_key,),
         ).fetchone()
         if saved:
             group.display_name = saved[0]

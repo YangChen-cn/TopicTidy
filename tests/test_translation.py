@@ -7,7 +7,7 @@ from downloads_organizer.config import CROSS_LANGUAGE_TIME_WINDOW_SECONDS
 from downloads_organizer.embedding import EncodedVector
 from downloads_organizer.models import IndexedFile
 from downloads_organizer.scanner import scan
-from downloads_organizer.semantic_text import build_semantic_text
+from downloads_organizer.semantic_text import build_semantic_text, semantic_cache_version
 from downloads_organizer.translation import LanguagePair
 
 from conftest import put
@@ -25,15 +25,16 @@ class FixedCrossLanguageEncoder:
         ]
 
     def encode_in_language(self, texts: list[str], language: str) -> list[EncodedVector]:
-        assert language == "en"
         results = []
         for text in texts:
             lowered = text.lower()
-            if "cooking" in lowered or "kitchen" in lowered:
+            if language != "en":
+                vector = [0.0, 1.0]
+            elif "cooking" in lowered or "kitchen" in lowered:
                 vector = [0.0, 1.0]
             else:
                 vector = [1.0, 0.0]
-            results.append(EncodedVector(vector, "en"))
+            results.append(EncodedVector(vector, language))
         return results
 
 
@@ -115,7 +116,7 @@ def test_pivot_translation_is_lazy_cached_and_explained(workspace, monkeypatch):
     assert translator.translate_calls == 1
     assert {
         row[0] for row in db.conn.execute("SELECT embedding_version FROM semantic_pivots")
-    } == {encoder.version}
+    } == {semantic_cache_version(encoder.version)}
 
 
 def test_zero_lexical_clue_cross_language_pair_uses_temporal_recall(workspace):

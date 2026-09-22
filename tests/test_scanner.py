@@ -4,6 +4,7 @@ from downloads_organizer.extractors import ExtractorRegistry
 from downloads_organizer.models import Extracted
 
 from downloads_organizer.scanner import candidates, scan
+from downloads_organizer.text_features import TEXT_FEATURE_VERSION
 
 from conftest import put
 
@@ -105,7 +106,7 @@ def test_extractor_version_change_invalidates_unchanged_file_cache(workspace):
     assert stats["scanned"] == 1
     assert stats["unchanged"] == 0
     feature = db.conn.execute("SELECT * FROM features").fetchone()
-    assert feature["extractor_version"] == "versioned:2"
+    assert feature["extractor_version"] == f"versioned:2;text-features:{TEXT_FEATURE_VERSION}"
     assert feature["text"] == "second extraction"
     assert feature["native_embedding"] is None
     assert feature["native_embedding_space"] is None

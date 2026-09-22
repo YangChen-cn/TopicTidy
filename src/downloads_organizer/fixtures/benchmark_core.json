@@ -21,8 +21,21 @@
     {"name": "电池储能概论.md", "title": "电池储能概论", "content": "电池储能系统的容量、安全与电网调度。", "native_space": "zh-Hans", "pivot_vector": [0.6, 0.8, 0.0], "translated_content": "Battery storage systems capacity safety and grid dispatch."},
     {"name": "Reference Notes.md", "title": "Reference Notes", "content": "Battery storage systems capacity safety and grid operations.", "native_space": "en", "pivot_vector": [0.6, 0.8, 0.0]},
 
+    {"name": "cs229-notes1.md", "title": "CS229 Linear Models", "content": "Linear regression likelihood and optimization.", "vector": [0.7, 0.7, 0.0]},
+    {"name": "cs229-deep-learning.md", "title": "CS229 Deep Learning", "content": "Neural network backpropagation and representation learning.", "vector": [0.7, 0.7, 0.0]},
+
+    {"name": "01-memory.md", "title": "FreeRTOS Memory Management", "content": "Heap allocation and task stacks.", "vector": [0.8, 0.6, 0.0]},
+    {"name": "02-queues.md", "title": "FreeRTOS Queues", "content": "Queue messages between concurrent tasks.", "vector": [0.8, 0.6, 0.0]},
+    {"name": "03-timers.md", "title": "FreeRTOS Software Timers", "content": "Timer callbacks and scheduler behavior.", "vector": [0.8, 0.6, 0.0]},
+
+    {"name": "README.md", "title": "Embedded Linux Notes", "content": "# Embedded Linux Notes\n[Processes](01-processes.md)\n[Files](02-files.md)\n[Signals](03-signals.md)"},
+    {"name": "01-processes.md", "content": "fork exec process lifecycle"},
+    {"name": "02-files.md", "content": "open read write file descriptors"},
+    {"name": "03-signals.md", "content": "sigaction interrupt handling"},
+
     {"name": "tax receipt.md", "content": "Annual personal tax receipt and payment.", "source_urls": ["https://portal.example.edu/download/item"]},
     {"name": "hotel booking.md", "content": "Hotel reservation itinerary and booking.", "source_urls": ["https://portal.example.edu/download/item"]},
+    {"name": "citation-noise.md", "content": "HAVE1000 TASK1000 NOTES2021 ORNL2005 are citation and prose artifacts, not course codes."},
     {"name": "random.json", "content": "{\"unrelated\": true}"},
     {"name": "installer.dmg", "content": ""},
     {"name": "archive.zip", "content": ""}
@@ -34,10 +47,14 @@
     "ELEC6104": ["ELEC6104 Project Overview.md", "ELEC6104 Project Plan.md"],
     "Grid Storage": ["Grid Storage Design v1.pdf", "Grid Storage Design v2.docx"],
     "Renewable Systems": ["Large Renewable Systems Report.pdf", "Renewable Systems Appendix.md"],
-    "Cross-language Storage": ["电池储能概论.md", "Reference Notes.md"]
+    "Cross-language Storage": ["电池储能概论.md", "Reference Notes.md"],
+    "CS229": ["cs229-notes1.md", "cs229-deep-learning.md"],
+    "FreeRTOS": ["01-memory.md", "02-queues.md", "03-timers.md"],
+    "Embedded Linux Notes": ["README.md", "01-processes.md", "02-files.md", "03-signals.md"]
   },
   "expected_unclassified": [
     "archive.zip",
+    "citation-noise.md",
     "hotel booking.md",
     "installer.dmg",
     "random.json",

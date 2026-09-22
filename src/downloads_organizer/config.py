@@ -13,6 +13,11 @@ NON_COURSE_PREFIXES = {
     "AUTUMN", "FALL", "SPRING", "SUMMER", "WINTER", "TERM", "SEMESTER",
     "LECTURE", "CHAPTER",
 }
+BODY_COURSE_PREFIXES = {
+    "ACCT", "AI", "BIO", "BUS", "CHEM", "CIVL", "COMM", "COMP", "CS", "CSE",
+    "DATA", "ECE", "ECON", "EE", "ELEC", "ENGG", "FIN", "INFO", "LAW", "MATH",
+    "MECH", "MED", "PHYS", "STAT",
+}
 INCOMPLETE_SUFFIXES = {".crdownload", ".download", ".part", ".tmp"}
 CROSS_LANGUAGE_TIME_WINDOW_SECONDS = 14 * 24 * 60 * 60
 
@@ -68,7 +73,7 @@ class Settings:
 def normalize_course(value: str) -> str:
     for raw_prefix, number in COURSE_PATTERN.findall(value):
         prefix = raw_prefix.upper()
-        if prefix not in NON_COURSE_PREFIXES:
+        if is_course_candidate(prefix, number):
             return f"{prefix}{number}"
     return ""
 
@@ -77,5 +82,23 @@ def all_courses(value: str) -> set[str]:
     return {
         f"{prefix}{number}"
         for raw_prefix, number in COURSE_PATTERN.findall(value)
-        if (prefix := raw_prefix.upper()) not in NON_COURSE_PREFIXES
+        if is_course_candidate((prefix := raw_prefix.upper()), number)
+    }
+
+
+def is_course_candidate(prefix: str, number: str) -> bool:
+    """Reject common year-shaped citations before treating text as a course code."""
+    return prefix not in NON_COURSE_PREFIXES and not 1900 <= int(number) <= 2099
+
+
+def is_body_course_candidate(prefix: str, number: str) -> bool:
+    """Use a strict academic-prefix allowlist for codes found inside documents."""
+    return prefix in BODY_COURSE_PREFIXES and is_course_candidate(prefix, number)
+
+
+def body_courses(value: str) -> set[str]:
+    return {
+        f"{prefix}{number}"
+        for raw_prefix, number in COURSE_PATTERN.findall(value)
+        if is_body_course_candidate((prefix := raw_prefix.upper()), number)
     }

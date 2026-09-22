@@ -1,6 +1,6 @@
 # 架构说明
 
-核心包按职责分层：`scanner` 负责顶层枚举、稳定性检查、指纹、extractor-version cache invalidation 和索引；`extractors` 提供可插拔 `DocumentExtractor` 接口与格式实现；`metadata` 负责 macOS 来源元数据；`text_features` 提供跨格式词元特征；`clustering` 负责结构化证据、课程种子及 complete-link 聚类；`topic_naming` 负责稳定主题命名和内部身份；`operations` 负责预览、移动、日志恢复和撤销；`preferences` 提供持久设置接口；`workflow` 和 `automation` 组合扫描、建议、自动确认与移动；`scheduler` 只负责 macOS LaunchAgent；`cli` 只负责终端输入输出。文件状态未变化但 extractor version 改变时，scanner 复用已有内容指纹、重新提取，并清除 native 与 pivot 缓存。
+核心包按职责分层：`scanner` 负责顶层枚举、稳定性检查、指纹、extractor-version cache invalidation 和索引；`extractors` 提供可插拔 `DocumentExtractor` 接口与格式实现；`metadata` 负责 macOS 来源元数据；`text_features` 提供跨格式词元、关键词、URL 和文档引用特征；`clustering` 负责结构化证据、课程种子及 complete-link 聚类；`topic_naming` 负责稳定主题命名和内部身份；`operations` 负责预览、移动、日志恢复和撤销；`preferences` 提供持久设置接口；`workflow` 和 `automation` 组合扫描、建议、自动确认与移动；`scheduler` 只负责 macOS LaunchAgent；`cli` 只负责终端输入输出。extractor cache key 同时包含格式提取器版本和共享文本特征版本；任一版本变化时，scanner 复用已有内容指纹、重新提取，并清除 native 与 pivot 缓存。
 
 SQLite 使用 WAL 和外键，当前 schema 版本为 5。`app_settings` 保存目标根目录、自动确认开关和阈值；`files` 保存当前文件身份，`features` 以指纹和 extractor 版本缓存文本、`native_embedding` 及其语言空间；`semantic_pivots` 以文件指纹和目标语言缓存代表性短文本、翻译结果、Translation/embedding 版本和 English pivot vector。文件内容或 extractor 缓存变化时删除对应 pivot；embedding helper 版本变化时复用翻译文本，只重新编码。`topics.topic_key` 是稳定内部身份，`topics.display_name` 是可修改名称。`plans` 与 `plan_members` 保存方案快照、当时的目标根目录及结构化证据，`operation_batches` 与 `operation_logs` 保存每次操作的文件级意图和结果，`associations` 通过 `topic_key` 保存人工确认关系。项目尚未进入用户阶段，因此 schema 不做向后迁移；版本不匹配时重建测试数据库。
 
@@ -10,11 +10,11 @@ SQLite 使用 WAL 和外键，当前 schema 版本为 5。`app_settings` 保存�
 
 PDF extractor 只访问采样页。少量页面全部读取；大型文档选择前三页、25%/50%/75% 代表页和最后两页。前部页面获得更高字符预算，同时为中部和尾部预留空间，总文本不超过 `max_chars`。
 
-分类顺序是：人工关联 → 强课程号种子 → 无标识文件谨慎附着课程 → 剩余文件 complete-link 聚类。课程号冲突会把 pair score 直接降为零。同域名只是弱证据。complete-link 要求两个组之间每一对文件都达到阈值，避免单个桥接文件把不一致的资料合并。每个结果分别报告课程代码、文件名、正文、原生语义、跨语言语义、来源 URL 的分数和 strong/weak/none 强度。
+分类顺序是：人工关联 → 强课程号种子 → 无标识文件谨慎附着课程 → Markdown 目录显式链接的有界集合 → 剩余文件 complete-link 聚类。文件名和来源中的课程样式标识允许较宽的项目代码；正文只接受学科前缀 allowlist，并排除 1900–2099 的年份，防止引用文本中的 `NOTES2021`、`HAVE1000` 等误建课程。课程号冲突会把 pair score 直接降为零。同域名只是弱证据。系列文件名使用 overlap 检测共同标识，标题只有包含数字或混合大小写的 identifier-like token 才作为系列锚点，普通 `machine learning` 等领域词组不能取得同等权重。Markdown 集合只使用索引文件直接指向当前顶层文件的链接，不通过中间文件传递扩张。其余 complete-link 仍要求两个组之间每一对文件都达到阈值，避免单个桥接文件把不一致的资料合并。每个结果分别报告课程代码、文件名、正文、原生语义、跨语言语义、来源 URL 的分数和 strong/weak/none 强度；显式目录集合额外报告 `document_links`。
 
-命名首先采用课程代码；否则从文件名和文档标题中寻找在组内正文得到支持的连续短语，保留自然词序。它不会把高频关键词重新排序后拼成名称。无可靠短语时使用简洁标题或 `Related Documents`。
+命名首先采用课程代码；否则优先使用共同系列标识，再从来源路径、文件名和文档标题中寻找在组内正文得到支持的连续短语，保留自然词序。README/索引集合可使用索引标题。它不会把高频关键词重新排序后拼成名称。无可靠短语时使用简洁标题或 `Related Documents`。只有 `source='manual'` 的主题名会覆盖重新生成的建议名；review rename 会把该名称标记为人工名称，同时保持 `topic_key` 不变。
 
-`benchmark` 从打包的标注 fixture 建立临时数据库，比较 expected 与 predicted 文件对，报告 precision、recall、F1、精确分组匹配和未分类匹配。fixture 覆盖课程讲义、正文课程号、相似名称的不同课程、PDF/DOCX 修改版本、无关归档文件、相同来源 URL 的无关内容、大型 PDF 和中英 English pivot 场景。
+`benchmark` 从打包的标注 fixture 建立临时数据库，比较 expected 与 predicted 文件对，报告 precision、recall、F1、精确分组匹配和未分类匹配。fixture 覆盖课程讲义、正文课程号、相似名称的不同课程、PDF/DOCX 修改版本、无关归档文件、相同来源 URL 的无关内容、大型 PDF、中英 English pivot、稳定系列标识、Markdown 索引集合和伪课程代码场景。
 
 SQLite 事务无法与 APFS rename 构成共同原子操作。工具因此在移动前提交 `intent`，移动后立即写结果。下一次启动会检查未结束批次：目标存在且源消失时记为已移动，反之记为未开始，无法唯一判断时记为 ambiguous。撤销会重新计算 SHA-256，检查原路径空闲，再做同卷 rename；冲突只会跳过并报告。
 

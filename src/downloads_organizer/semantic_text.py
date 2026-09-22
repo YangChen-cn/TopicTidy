@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from .models import IndexedFile
 
+SEMANTIC_TEXT_VERSION = "3"
+
 
 def _sample(value: str, budget: int) -> str:
     value = " ".join(value.split())
@@ -42,3 +44,25 @@ def build_semantic_text(file: IndexedFile, *, max_chars: int = 2400) -> str:
     body = _sample(file.text, body_budget) if body_budget else ""
     result = "\n\n".join(part for part in (prefix, body) if part)
     return result[:max_chars]
+
+
+def semantic_language(file: IndexedFile) -> str:
+    """Choose a stable native embedding space from human-facing metadata.
+
+    Code-heavy course notes frequently confuse automatic language detection.
+    Titles and summaries are a better signal for the document's prose language.
+    """
+    sample = " ".join((file.title or file.path.stem, file.summary[:600]))
+    if any("\uac00" <= char <= "\ud7af" for char in sample):
+        return "ko"
+    if any("\u3040" <= char <= "\u30ff" for char in sample):
+        return "ja"
+    cjk = sum("\u4e00" <= char <= "\u9fff" for char in sample)
+    latin = sum(char.isascii() and char.isalpha() for char in sample)
+    if cjk >= 2 and cjk / max(1, cjk + latin) >= 0.12:
+        return "zh-Hans"
+    return "en"
+
+
+def semantic_cache_version(encoder_version: str) -> str:
+    return f"{encoder_version};semantic-text:{SEMANTIC_TEXT_VERSION}"
