@@ -4,7 +4,7 @@
 
 ## 语料
 
-语料共 50 个文件：19 PDF、5 PPTX、2 DOCX、24 Markdown。22 个文件来自本机已有课程资料和技术笔记的副本，28 个文件来自公开教学资料：
+语料共 50 个文件：19 PDF、5 PPTX、2 DOCX、24 Markdown。28 个文件来自本机已有课程资料和技术笔记的副本，22 个文件来自公开教学资料：
 
 - [MIT OpenCourseWare 6.622 Power Electronics](https://ocw.mit.edu/courses/6-622-power-electronics-spring-2023/lists/typed-lecture-notes/)：6 PDF；
 - [Stanford CS229](https://cs229.stanford.edu/syllabus-spring2021.html)：5 PDF；
