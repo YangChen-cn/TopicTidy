@@ -35,3 +35,11 @@ SwiftUI 客户端位于 `macos/`，使用 `MenuBarExtra`、`NavigationSplitView`
 菜单栏面板宽 380 pt，空状态按内容定高，主题按 `topic_key` 分组并默认折叠。文件和证据只在展开时展示；建议、记录与设置均可在面板中完成。移动预览在菜单栏内展示，在完整窗口中以 sheet 展示；两者各自持有不可变的预览副本，确认时服务端再次验证清单。GUI 视觉验收由用户手动完成，开发阶段不默认使用 Computer Use。
 
 人工审阅以主题为单位。`plan_members.applied` 区分已执行成员与仍待审阅成员；单主题 apply 只接收该主题成员的精确预览，并为其创建独立批次，其他主题保持 draft。取消主题只修改当前方案的 excluded 状态，不写长期 correction，可随时恢复。撤销会清除对应成员的 applied 状态并重新开放原方案。
+
+## Distribution boundaries
+
+`pyproject.toml` 的无条件依赖就是 Python Core 运行集合：配置路径和 PDF/DOCX/PPTX 提取依赖。Typer、Rich 与 watchdog 只存在于 `cli` extra；`dev` 继承 CLI 并增加测试和发布工具。标准 wheel 同时声明 `tt` 与 `downloads-organizer` entry point。GUI 构建安装不带 extra 的 Core，因此不会引入 CLI-only 包。
+
+GUI 的 Python runtime 来自固定 URL 和 SHA-256 的 Python 3.12 standalone archive。安装 Core 后，`prune_runtime.py` 只清理明确列出的构建/安装内容：pip、setuptools、headers、Tk/IDLE/ensurepip、测试目录、字节码缓存、无运行价值的 dist-info 文件和 CLI-only 包。Core package、标准库导入路径、动态扩展和 METADATA 保留。裁剪后必须通过 bundle smoke test，覆盖 PDF/DOCX/PPTX 导入、扫描、语义 helper、主题级 apply/dismiss/restore/undo，并在断网与搬迁目录中执行。
+
+`python -m build` 生成 `topictidy` wheel 与 sdist。`scripts/verify_distribution.py` 检查两个 console entry point 和 extra marker，然后在全新环境安装 `wheel[cli]` 并执行两种命令的 `--help`。GitHub Actions 保存 wheel/sdist artifact，但不包含 PyPI token 或自动发布步骤。

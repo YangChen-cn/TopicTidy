@@ -1,22 +1,31 @@
 [build-system]
-requires = ["hatchling>=1.27,<2"]
+requires = ["hatchling==1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "downloads-organizer"
-version = "0.8.0"
-description = "A local, explainable macOS Downloads organizer"
+name = "topictidy"
+version = "0.9.0"
+description = "Local, explainable and reversible topic-based Downloads organizer for macOS"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = "MIT"
+authors = [{ name = "Yang Chen" }]
+keywords = ["macos", "downloads", "organizer", "local-first", "semantic-search"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: MacOS X",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Desktop Environment :: File Managers",
+]
 dependencies = [
   "platformdirs==4.4.0",
   "pypdf==6.0.0",
   "python-docx==1.2.0",
   "python-pptx==1.0.2",
-  "rich==14.1.0",
-  "typer==0.17.4",
-  "watchdog==6.0.0",
 ]
 
 [project.urls]
@@ -25,7 +34,18 @@ Repository = "https://github.com/YangChen-cn/TopicTidy"
 Issues = "https://github.com/YangChen-cn/TopicTidy/issues"
 
 [project.optional-dependencies]
-dev = ["hatchling==1.27.0", "pytest==8.4.2"]
+cli = [
+  "rich==14.3.3",
+  "typer==0.17.4",
+  "watchdog==6.0.0",
+]
+dev = [
+  "topictidy[cli]",
+  "build==1.6.1",
+  "hatchling==1.27.0",
+  "pytest==8.4.2",
+  "twine==7.0.0",
+]
 
 [project.scripts]
 downloads-organizer = "downloads_organizer.cli:app"

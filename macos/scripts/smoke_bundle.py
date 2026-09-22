@@ -29,6 +29,15 @@ with tempfile.TemporaryDirectory(prefix='topictidy-relocation-') as directory:
     }
     command = ['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)',
                str(resources / 'python/bin/python3'), '-I', '-B', '-m', 'downloads_organizer.gui_bridge']
+    probe = subprocess.run(
+        ['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)',
+         str(resources / 'python/bin/python3'), '-I', '-B', '-c',
+         'import importlib.util,docx,platformdirs,pptx,pypdf; '
+         'assert all(importlib.util.find_spec(x) is None for x in '
+         '("pip","rich","typer","watchdog"))'],
+        cwd=root, env=env, capture_output=True, text=True, timeout=60,
+    )
+    assert probe.returncode == 0, probe.stderr
 
     def call(**request):
         result = subprocess.run(command, input=json.dumps(request), text=True, capture_output=True,
@@ -58,5 +67,7 @@ with tempfile.TemporaryDirectory(prefix='topictidy-relocation-') as directory:
     call(action='undo', batch_id=batch, confirmed=True)
     assert len(list(downloads.glob('*.md'))) == 4
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
+    assert not list(resources.rglob('__pycache__'))
+    assert not list(resources.rglob('*.pyc'))
     print('PASS: relocated bundle; network denied; per-topic apply/dismiss/restore/undo; signature preserved')
     print(scanned['message'])
