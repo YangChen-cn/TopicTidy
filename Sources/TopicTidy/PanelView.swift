@@ -5,8 +5,10 @@ struct PanelView: View {
     @State private var tab = "review"
     @State private var showPreview = false
     @State private var previewMoves: [Move] = []
+    @State private var showDismissed = false
     @Environment(\.openWindow) private var openWindow
     private var groups: [TopicGroup] { TopicGroup.make(model.snapshot?.members ?? []) }
+    private var dismissed: [DismissedGroup] { model.snapshot?.dismissed ?? [] }
     private var movableCount: Int { model.snapshot?.members.filter { $0.topic != nil && !$0.excluded && !$0.applied }.count ?? 0 }
 
     var body: some View {
@@ -78,8 +80,9 @@ struct PanelView: View {
                         ForEach(groups) { group in
                             TopicGroupView(group: group, model: model) { preview($0) }
                         }
+                        if !dismissed.isEmpty { dismissedSection }
                     }.padding(.horizontal, 12).padding(.bottom, 12)
-                }.frame(height: min(320, max(150, CGFloat(groups.count) * 64)))
+                }.frame(height: min(320, max(150, CGFloat(groups.count + (dismissed.isEmpty ? 0 : 1)) * 64)))
                 HStack {
                     Text("确认前不移动文件").font(.caption).foregroundStyle(.secondary)
                     Spacer()
@@ -94,6 +97,29 @@ struct PanelView: View {
                 }.padding(12)
             }
         }
+    }
+
+    /// Collapsed by default; a dismissed topic never returns on its own.
+    private var dismissedSection: some View {
+        DisclosureGroup(isExpanded: $showDismissed) {
+            VStack(spacing: 0) {
+                ForEach(dismissed) { group in
+                    HStack {
+                        Label(group.name, systemImage: "xmark.circle")
+                            .font(.system(size: 12)).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text("\(group.files.count)").font(.caption).foregroundStyle(.secondary)
+                        Button("恢复") { Task { await model.restoreDismissed(group.name) } }
+                            .buttonStyle(.borderless).disabled(model.busy)
+                    }.padding(.vertical, 5)
+                }
+            }.padding(.top, 4)
+        } label: {
+            Label("已取消 \(dismissed.count)", systemImage: "xmark.circle")
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func preview(_ group: TopicGroup) {

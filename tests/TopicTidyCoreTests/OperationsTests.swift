@@ -73,7 +73,7 @@ private func coursePlan(_ workspace: Workspace) throws -> Int {
     #expect(try Operations.previewMoves(workspace.db, workspace.settings, planID).count == 2)
 }
 
-@Test func dismissTopicIsPlanOnlyAndReversible() throws {
+@Test func dismissTopicIsReversibleWithinThePlan() throws {
     let workspace = try Workspace()
     defer { workspace.close() }
     let planID = try coursePlan(workspace)
@@ -84,11 +84,68 @@ private func coursePlan(_ workspace: Workspace) throws -> Int {
     #expect(try Operations.editPlan(workspace.db, planID, command: "dismiss-topic", args: [topicKey])
         == "主题已取消")
     #expect(try Operations.previewMoves(workspace.db, workspace.settings, planID).isEmpty)
-    #expect(try workspace.scalar("SELECT COUNT(*) FROM corrections")?.int == 0)
 
     #expect(try Operations.editPlan(workspace.db, planID, command: "restore-topic", args: [topicKey])
         == "主题已恢复")
     #expect(try Operations.previewMoves(workspace.db, workspace.settings, planID).count == 2)
+}
+
+@Test func dismissedTopicStaysDismissedAcrossScans() throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    let planID = try coursePlan(workspace)
+    let topicKey = try #require(try workspace.rows(
+        "SELECT topic_key,group_name FROM plan_members WHERE plan_id=? LIMIT 1", [planID]
+    ).first)
+    let name = topicKey["group_name"].string
+
+    _ = try Operations.editPlan(workspace.db, planID, command: "dismiss-topic",
+                                args: [topicKey["topic_key"].string])
+    #expect(try workspace.scalar(
+        "SELECT COUNT(*) FROM corrections WHERE action='dismiss' AND active=1"
+    )?.int == 2)
+
+    // A later scan builds a new plan; the dismissed files must not come back as
+    // a group, and they must not surface as unclassified either.
+    var result = try workspace.cluster()
+    #expect(result.groups.isEmpty)
+    #expect(result.unclassified.isEmpty)
+
+    // Restoring re-opens it: the next proposal includes the topic again.
+    _ = try Operations.editPlan(workspace.db, planID, command: "restore-dismissed", args: [name])
+    #expect(try workspace.scalar(
+        "SELECT COUNT(*) FROM corrections WHERE action='dismiss' AND active=1"
+    )?.int == 0)
+    result = try workspace.cluster()
+    #expect(result.groups.count == 1)
+    #expect(result.groups.first?.name == name)
+}
+
+@Test func dismissedTopicIsReportedToTheClientUntilRestored() async throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    let planID = try coursePlan(workspace)
+    let member = try #require(try workspace.rows(
+        "SELECT topic_key,group_name FROM plan_members WHERE plan_id=? LIMIT 1", [planID]
+    ).first)
+    let name = member["group_name"].string
+    let service = AppService(base: workspace.settings)
+
+    var request = ServiceRequest()
+    request.action = "edit"
+    request.planID = planID
+    request.command = "dismiss-topic"
+    request.args = [member["topic_key"].string]
+    let dismissed = await service.dispatch(request)
+    #expect(dismissed.ok)
+    #expect(dismissed.snapshot?.dismissed.map(\.name) == [name])
+    #expect(dismissed.snapshot?.dismissed.first?.files.count == 2)
+
+    request.command = "restore-dismissed"
+    request.args = [name]
+    let restored = await service.dispatch(request)
+    #expect(restored.ok)
+    #expect(restored.snapshot?.dismissed.isEmpty == true)
 }
 
 @Test func undoSkipsWhenOriginalPathIsOccupied() throws {

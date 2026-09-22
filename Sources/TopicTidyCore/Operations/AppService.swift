@@ -52,18 +52,45 @@ public struct SessionBatch: Sendable {
     public var createdAt: Double
 }
 
+/// A topic the user dismissed. Dismissals are durable, so they are reported
+/// even when the current plan no longer contains a row for them.
+public struct SessionDismissedGroup: Sendable {
+    public var name: String
+    public var files: [SessionDismissedFile]
+
+    public init(name: String, files: [SessionDismissedFile]) {
+        self.name = name
+        self.files = files
+    }
+}
+
+public struct SessionDismissedFile: Sendable {
+    public var fingerprint: String
+    public var name: String
+    public var path: String
+
+    public init(fingerprint: String, name: String, path: String) {
+        self.fingerprint = fingerprint
+        self.name = name
+        self.path = path
+    }
+}
+
 public struct SessionSnapshot: Sendable {
     public var planID: Int?
     public var members: [SessionMember]
+    public var dismissed: [SessionDismissedGroup]
     public var history: [SessionBatch]
     public var preferences: OrganizerPreferences
     public var schedule: ScheduleStatus
     public var downloads: URL
 
-    public init(planID: Int?, members: [SessionMember], history: [SessionBatch],
-                preferences: OrganizerPreferences, schedule: ScheduleStatus, downloads: URL) {
+    public init(planID: Int?, members: [SessionMember], dismissed: [SessionDismissedGroup] = [],
+                history: [SessionBatch], preferences: OrganizerPreferences,
+                schedule: ScheduleStatus, downloads: URL) {
         self.planID = planID
         self.members = members
+        self.dismissed = dismissed
         self.history = history
         self.preferences = preferences
         self.schedule = schedule
@@ -165,6 +192,32 @@ public actor AppService {
                 ))
             }
         }
+        var dismissed: [SessionDismissedGroup] = []
+        var dismissedIndex: [String: Int] = [:]
+        var seenFingerprints: Set<String> = []
+        let dismissedRows = try db.connection.query(
+            """
+            SELECT c.topic_name,f.name,f.path,c.file_fingerprint
+            FROM corrections c JOIN files f ON f.fingerprint=c.file_fingerprint
+            WHERE c.action='dismiss' AND c.active=1
+            ORDER BY c.topic_name,f.name
+            """
+        )
+        for row in dismissedRows {
+            let name = row["topic_name"].optionalString ?? ""
+            let fingerprint = row["file_fingerprint"].string
+            guard !name.isEmpty, seenFingerprints.insert(fingerprint).inserted else { continue }
+            let file = SessionDismissedFile(fingerprint: fingerprint, name: row["name"].string,
+                                            path: row["path"].string)
+            if let index = dismissedIndex[name] {
+                dismissed[index].files.append(file)
+            } else {
+                dismissedIndex[name] = dismissed.count
+                dismissed.append(SessionDismissedGroup(name: name, files: [file]))
+            }
+        }
+        dismissed.sort { Py.less(Py.lower($0.name), Py.lower($1.name)) }
+
         let history = try db.connection.query(
             "SELECT id,kind,status,created_at FROM operation_batches ORDER BY id DESC LIMIT 40"
         ).map {
@@ -174,6 +227,7 @@ public actor AppService {
         return SessionSnapshot(
             planID: resolvedPlan,
             members: members,
+            dismissed: dismissed,
             history: history,
             preferences: PreferenceStore(db, base: base).get(),
             schedule: LaunchAgentScheduler(settings).status(),

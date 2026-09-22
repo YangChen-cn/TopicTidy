@@ -42,9 +42,24 @@ struct Schedule: Sendable {
     var loaded: Bool
 }
 
+/// A topic the user dismissed; kept out of new proposals until it is restored.
+struct DismissedGroup: Identifiable, Sendable {
+    var name: String
+    var files: [DismissedFile]
+    var id: String { "dismissed:\(name)" }
+}
+
+struct DismissedFile: Identifiable, Sendable {
+    var fingerprint: String
+    var name: String
+    var path: String
+    var id: String { fingerprint }
+}
+
 struct Snapshot: Sendable {
     var plan_id: Int?
     var members: [Member]
+    var dismissed: [DismissedGroup]
     var history: [Batch]
     var preferences: Preferences
     var schedule: Schedule

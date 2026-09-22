@@ -363,13 +363,57 @@ public enum Operations {
 
         switch (command, args.count) {
         case ("dismiss-topic", 1), ("restore-topic", 1):
-            let excluded = command == "dismiss-topic" ? 1 : 0
+            let excluding = command == "dismiss-topic"
+            // Dismissal is durable: it must survive the next scan, so each
+            // member also gets a `dismiss` correction that clustering honours.
+            let members = try db.connection.query(
+                """
+                SELECT m.id,m.file_id,m.group_name,f.fingerprint
+                FROM plan_members m JOIN files f ON f.id=m.file_id
+                WHERE m.plan_id=? AND m.topic_key=? AND m.applied=0
+                """,
+                [planID, args[0]]
+            )
+            guard !members.isEmpty else { throw OrganizerError("主题不存在或已经整理") }
+            let name = members[0]["group_name"].string
             try db.connection.run(
                 "UPDATE plan_members SET excluded=? WHERE plan_id=? AND topic_key=? AND applied=0",
-                [excluded, planID, args[0]]
+                [excluding ? 1 : 0, planID, args[0]]
             )
-            if db.connection.changes() == 0 { throw OrganizerError("主题不存在或已经整理") }
-            return excluded == 1 ? "主题已取消" : "主题已恢复"
+            for member in members {
+                let fingerprint = member["fingerprint"].string
+                if fingerprint.isEmpty { continue }
+                if excluding {
+                    try db.connection.run(
+                        "INSERT INTO corrections(created_at,file_fingerprint,action,topic_name,plan_id) VALUES(?,?,?,?,?)",
+                        [Date().timeIntervalSince1970, fingerprint, "dismiss", name, planID]
+                    )
+                } else {
+                    try db.connection.run(
+                        "UPDATE corrections SET active=0 WHERE action='dismiss' AND file_fingerprint=? AND active=1",
+                        [fingerprint]
+                    )
+                }
+            }
+            return excluding ? "主题已取消" : "主题已恢复"
+        case ("restore-dismissed", 1):
+            // Restores a topic that was dismissed in an earlier plan, where no
+            // plan_members row survives to re-open.
+            let name = args[0]
+            let rows = try db.connection.query(
+                "SELECT DISTINCT file_fingerprint FROM corrections WHERE action='dismiss' AND active=1 AND topic_name=?",
+                [name]
+            )
+            guard !rows.isEmpty else { throw OrganizerError("没有已取消的主题 \(name)") }
+            try db.connection.run(
+                "UPDATE corrections SET active=0 WHERE action='dismiss' AND active=1 AND topic_name=?", [name]
+            )
+            try db.connection.run(
+                "UPDATE plan_members SET excluded=0 WHERE plan_id=? AND group_name=? AND applied=0",
+                [planID, name]
+            )
+            correctionTopic = name
+            action = "主题 \(name) 已恢复，重新扫描后会再次提出"
         case ("rename", let count) where count >= 2:
             let old = args[0]
             let new = try safeTopicName(args[1...].joined(separator: " "))

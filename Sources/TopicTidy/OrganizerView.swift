@@ -6,7 +6,10 @@ struct OrganizerView: View {
     @State private var search = ""
     @State private var showPreview = false
     @State private var previewMoves: [Move] = []
+    @State private var showDismissed = false
     private var groups: [TopicGroup] { TopicGroup.make(model.snapshot?.members ?? []) }
+    private var dismissed: [DismissedGroup] { model.snapshot?.dismissed ?? [] }
+    private var selectedDismissed: DismissedGroup? { dismissed.first { $0.id == selection } }
     /// Members of dismissed topics leave the window along with their topic.
     private var visibleMembers: [Member] {
         let visible = Set(groups.map(\.id))
@@ -18,9 +21,15 @@ struct OrganizerView: View {
             && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search))
         }
     }
+    private var subtitle: String {
+        if selection == "history" { return "查看与撤销每次整理" }
+        if let group = selectedDismissed { return "已取消 · \(group.files.count) 个文件 · 不再提出" }
+        return "\(members.count) 个文件 · 确认后移动"
+    }
     private var title: String {
         if selection == "history" { return "整理记录" }
         if selection == "all" { return "整理建议" }
+        if let group = selectedDismissed { return group.name }
         return groups.first { $0.id == selection }?.name ?? "整理建议"
     }
 
@@ -41,6 +50,18 @@ struct OrganizerView: View {
                         }.tag(group.id)
                     }
                 }
+                if !dismissed.isEmpty {
+                    Section("已取消", isExpanded: $showDismissed) {
+                        ForEach(dismissed) { group in
+                            HStack {
+                                Label(group.name, systemImage: "xmark.circle")
+                                    .lineLimit(1).foregroundStyle(.secondary)
+                                Spacer()
+                                Text("\(group.files.count)").font(.caption).foregroundStyle(.secondary)
+                            }.tag(group.id)
+                        }
+                    }
+                }
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 260)
             .safeAreaInset(edge: .bottom) {
@@ -52,7 +73,7 @@ struct OrganizerView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(title).font(.title2).fontWeight(.semibold)
-                        Text(selection == "history" ? "查看与撤销每次整理" : "\(members.count) 个文件 · 确认后移动")
+                        Text(subtitle)
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -61,6 +82,8 @@ struct OrganizerView: View {
                 Divider()
                 if selection == "history" {
                     HistoryView(model: model)
+                } else if let group = selectedDismissed {
+                    dismissedDetail(group)
                 } else if model.snapshot?.plan_id == nil {
                     VStack(spacing: 12) {
                         Image(systemName: "tray.and.arrow.down").font(.system(size: 32, weight: .light)).foregroundStyle(.secondary)
@@ -142,6 +165,38 @@ struct OrganizerView: View {
             Button("好") { model.error = nil }
         } message: { Text(model.error ?? "") }
         .frame(minWidth: 620, minHeight: 400)
+    }
+
+    /// Dismissed topics are collapsed by default; selecting one shows its files
+    /// and the way back.
+    @ViewBuilder
+    private func dismissedDetail(_ group: DismissedGroup) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 9) {
+                ForEach(group.files) { file in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label(file.name, systemImage: "xmark.circle").font(.system(size: 12))
+                            .lineLimit(1).truncationMode(.middle).help(file.name)
+                        Text(file.path).font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.head)
+                    }
+                }
+            }.padding(16)
+        }
+        Divider()
+        HStack {
+            Text("已取消的主题不会出现在新的建议里。")
+                .font(.caption).foregroundStyle(.secondary)
+            Spacer()
+            Button("恢复主题") {
+                Task {
+                    await model.restoreDismissed(group.name)
+                    if model.snapshot?.dismissed.contains(where: { $0.id == selection }) != true {
+                        selection = "all"
+                    }
+                }
+            }
+        }.padding(.horizontal, 16).padding(.vertical, 11)
     }
 
     private func preview(_ group: TopicGroup) {

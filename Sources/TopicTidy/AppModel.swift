@@ -54,6 +54,11 @@ import TopicTidyCore
         await perform("edit", values: ["command": command, "args": args])
     }
 
+    /// Re-opens a topic that was dismissed in this or an earlier plan.
+    func restoreDismissed(_ name: String) async {
+        await edit("restore-dismissed", [name])
+    }
+
     func preview(topicKey: String) async -> [Move]? {
         guard await perform("preview", values: ["topic_key": topicKey]) else { return nil }
         return moves

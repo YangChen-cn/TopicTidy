@@ -35,6 +35,7 @@ The product is a pure native Swift package. There is no Python runtime, no helpe
 - Translation is propose-time fallback for plausible cross-language candidates. Never run translation during scan or for every indexed file.
 - Cross-language recall without lexical clues must stay bounded by nearest-neighbor and per-proposal limits; course conflicts remain hard negatives.
 - `topic_key` is durable identity; `display_name` is editable presentation. Rename operations must preserve `topic_key`.
+- Dismissing a topic is durable: it excludes the members in the current plan and writes one `corrections` row with `action='dismiss'` per member. Clustering drops dismissed files from proposals entirely (they must not reappear as groups or as unclassified), and `restore-dismissed` re-opens them. Since `corrections` has no topic column, dismissal is grouped by `topic_name`; two topics sharing a display name restore together.
 - Confidence values are heuristic scores, not calibrated probabilities.
 - The project is still pre-user. Do not add backward database migrations yet. Change the current schema and bump `Database.schemaVersion`; incompatible local test databases may be deleted and rebuilt.
 - Interrupted apply/auto-apply recovery must restore both file state and the plan's topic association after a completed rename.

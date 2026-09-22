@@ -20,6 +20,11 @@ extension Snapshot {
         self.init(
             plan_id: session.planID,
             members: session.members.map(Member.init),
+            dismissed: session.dismissed.map { group in
+                DismissedGroup(name: group.name, files: group.files.map {
+                    DismissedFile(fingerprint: $0.fingerprint, name: $0.name, path: $0.path)
+                })
+            },
             history: session.history.map {
                 Batch(id: $0.id, kind: $0.kind, status: $0.status, created_at: $0.createdAt)
             },

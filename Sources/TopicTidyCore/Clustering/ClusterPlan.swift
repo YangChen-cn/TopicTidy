@@ -70,9 +70,17 @@ public enum ClusterEngine {
                 """,
                 [file.fingerprint]
             ).first
-            if let row, row["action"].string == "exclude" {
+            guard let row else { continue }
+            switch row["action"].string {
+            case "exclude":
                 forcedUnclassified.append(file)
                 assigned.insert(file.id)
+            case "dismiss":
+                // A dismissed topic stays dismissed across scans: the file is
+                // kept out of proposals without being reported as unclassified.
+                assigned.insert(file.id)
+            default:
+                break
             }
         }
 
