@@ -63,7 +63,8 @@ class LaunchAgentScheduler:
 
     @property
     def command(self) -> list[str]:
-        return [sys.executable, "-m", "downloads_organizer", "auto", "run"]
+        flags = ["-I", "-B"] if os.getenv("TOPICTIDY_HELPERS") else []
+        return [sys.executable, *flags, "-m", "downloads_organizer", "auto", "run"]
 
     def status(self) -> ScheduleStatus:
         if not self.plist_path.exists():
@@ -118,6 +119,8 @@ class LaunchAgentScheduler:
                 "DOWNLOADS_ORGANIZER_HOME": str(self.settings.data_dir),
             },
         }
+        if os.getenv("TOPICTIDY_HELPERS"):
+            payload["EnvironmentVariables"]["TOPICTIDY_HELPERS"] = os.environ["TOPICTIDY_HELPERS"]
         previous = self.plist_path.read_bytes() if self.plist_path.exists() else None
         temporary = self.plist_path.with_suffix(".plist.tmp")
         with temporary.open("wb") as handle:

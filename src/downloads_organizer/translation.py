@@ -57,6 +57,9 @@ class NativeTranslationBackend:
         return f"apple-translation:{release}:{self.source_digest[:12]}"
 
     def is_prepared(self) -> bool:
+        if bundled := os.getenv("TOPICTIDY_HELPERS"):
+            helper = Path(bundled) / "native-translation"
+            return helper.is_file() and os.access(helper, os.X_OK)
         return (
             self.settings.translation_helper.is_file()
             and os.access(self.settings.translation_helper, os.X_OK)
@@ -66,6 +69,12 @@ class NativeTranslationBackend:
         )
 
     def prepare(self) -> Path:
+        bundled = os.getenv("TOPICTIDY_HELPERS")
+        if bundled:
+            helper = Path(bundled) / "native-translation"
+            if not helper.is_file() or not os.access(helper, os.X_OK):
+                raise RuntimeError("应用内置 translation helper 缺失")
+            return helper
         if self.is_prepared():
             return self.settings.translation_helper
         if not shutil.which("xcrun"):

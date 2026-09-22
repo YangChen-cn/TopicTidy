@@ -63,3 +63,14 @@ Before committing, require:
 - CLI JSON output remains machine-readable and contains topic identity plus structured evidence.
 
 When adding a file format, add an extractor-focused test. When changing clustering weights or naming, update or extend the benchmark fixture and explain any intentional expected-output change.
+
+## Native macOS client
+
+- `macos/` is the SwiftUI menu bar client. Keep filesystem mutations and classification in the Python application services.
+- `gui_bridge.py` is a local JSON transport; acquire the application lock before recovery, reads, edits, and moves.
+- GUI apply must present the exact saved-plan preview and submit confirmation plus that preview; reject changed previews.
+- Build with `swift build --package-path macos`; package using `.venv/bin/python macos/scripts/build_app.py`.
+- UI verification must use isolated Downloads/state directories; the distributed app must embed its runtime and helpers, never depend on the repository virtual environment or developer paths.
+- Preserve bundle signatures: use isolated Python with bytecode writes disabled, including scheduled runs. Sign nested Mach-O code before signing the app; validate relocation and `codesign --verify --deep --strict`.
+
+- GUI visual acceptance is manual by the user. Do not use Computer Use by default; validate builds, service contracts, and distribution with command-line tools. Keep the menu bar panel compact with content-driven height.

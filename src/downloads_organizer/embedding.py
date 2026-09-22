@@ -52,6 +52,9 @@ class NativeMacOSEncoder:
         return f"apple-nlembedding:{release}:{self.source_digest[:12]}"
 
     def is_prepared(self) -> bool:
+        if bundled := os.getenv("TOPICTIDY_HELPERS"):
+            helper = Path(bundled) / "native-embedding"
+            return helper.is_file() and os.access(helper, os.X_OK)
         stamp = self.settings.native_helper_stamp
         return (
             self.settings.native_helper.is_file()
@@ -61,6 +64,12 @@ class NativeMacOSEncoder:
         )
 
     def prepare(self) -> Path:
+        bundled = os.getenv("TOPICTIDY_HELPERS")
+        if bundled:
+            helper = Path(bundled) / "native-embedding"
+            if not helper.is_file() or not os.access(helper, os.X_OK):
+                raise RuntimeError("应用内置 embedding helper 缺失")
+            return helper
         if self.is_prepared():
             return self.settings.native_helper
         if not shutil.which("xcrun"):

@@ -27,3 +27,9 @@ SQLite 事务无法与 APFS rename 构成共同原子操作。工具因此在移
 核心 benchmark 用于日常开发回归；独立 `holdout_unseen.json` 包含 42 个未参与原 50 文件优化的半真实样本，重点检查 generic filename、同领域不同项目、同域名无关来源、直接目录链接、跨语言主题、课程冲突和大量未分类文件。安全门禁优先检查 precision 与未分类集合，不用 holdout 继续调整原语料权重。
 
 首版的边界是：没有 OCR、没有递归目录扫描、没有云端模型、没有模型下载、没有模型训练。评分是用于排序和审阅的启发式信号，不是校准后的概率。
+
+SwiftUI 客户端位于 `macos/`，使用 `MenuBarExtra`、`NavigationSplitView`、原生 Form 与 sheet。`AppModel` 在主线程维护界面状态，`Backend` actor 在非主线程运行 Python 子进程，通过 stdin/stdout 交换单个 JSON 请求/响应。Python `gui_bridge` 负责输入、应用级锁、错误响应和状态投影，调用原有 scanner/workflow/operations/preferences/scheduler，不在 Swift 中重实现分类和文件操作。移动预览在用户确认后再次比较完整清单，防止其他客户端修改方案或目标冲突后执行用户未审阅的位置。
+
+分发包包含 Python 3.12、固定依赖、编译后的 NaturalLanguage/Translation helper 和应用图标。Backend 使用 Bundle.resourceURL 定位运行时，以 `-I -B` 启动；`TOPICTIDY_HELPERS` 只选择包内可执行文件，不再要求终端用户安装编译器。每日任务保留该 helper 路径，并禁用字节码写入，避免改变签名资源。移动应用后需重新设置每日任务。打包过程清除源码安装元数据和 Swift 调试对象路径，逐项签名再封装；自签名能验证包完整性，但不具备 Developer ID 公证的系统信任。
+
+菜单栏面板宽 380 pt，空状态按内容定高，主题按 `topic_key` 分组并默认折叠。文件和证据只在展开时展示；建议、记录与设置均可在面板中完成。移动预览在菜单栏内展示，在完整窗口中以 sheet 展示；两者各自持有不可变的预览副本，确认时服务端再次验证清单。GUI 视觉验收由用户手动完成，开发阶段不默认使用 Computer Use。
