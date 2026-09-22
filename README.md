@@ -41,11 +41,16 @@ GUI + CLI：安装菜单栏应用，并把应用内的 `tt` 暴露到终端。
 brew install --cask YangChen-cn/tap/topictidy
 ```
 
-只装命令行：
+只装命令行（原生二进制，不受 Gatekeeper 未验证提示影响）：
 
 ```bash
 brew install YangChen-cn/tap/topictidy-cli
 ```
+
+> Cask 分发的应用使用自签名证书、未经 Apple 公证，首次启动时系统会提示“未验证”，
+> 在“系统设置 → 隐私与安全性”中允许即可。`tt` 来自同一个包，因此也会带上隔离标记：
+> 被系统终止时执行一次 `xattr -dr com.apple.quarantine /Applications/TopicTidy.app`。
+> Formula 与 `install.sh` 走的是独立二进制包，没有这一步。
 
 ### 一键安装脚本（仅 CLI）
 

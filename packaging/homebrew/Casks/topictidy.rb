@@ -12,7 +12,7 @@ cask "topictidy" do
     strategy :github_latest
   end
 
-  depends_on macos: ">= :sequoia"
+  depends_on macos: :sequoia
   depends_on arch: :arm64
 
   app "TopicTidy.app"
@@ -21,6 +21,18 @@ cask "topictidy" do
 
   uninstall quit: "com.topictidy.app",
             launchctl: "com.topictidy.daily"
+
+  caveats <<~EOS
+    TopicTidy 使用自签名证书，未经 Apple 公证。首次启动时系统会提示“未验证”，
+    请在“系统设置 → 隐私与安全性”中允许打开；终端里的 tt 同理，被系统终止后
+    执行一次即可（exit 137 表示这一步还没做）：
+
+      xattr -dr com.apple.quarantine /Applications/TopicTidy.app
+
+    只需要命令行、且没有这个提示的安装方式：
+
+      brew install YangChen-cn/tap/topictidy-cli
+  EOS
 
   zap trash: [
     "~/Library/LaunchAgents/com.topictidy.daily.plist",

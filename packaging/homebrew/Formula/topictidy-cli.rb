@@ -23,7 +23,8 @@ class TopictidyCli < Formula
 
   def caveats
     <<~EOS
-      仅安装命令行工具。需要菜单栏界面时：
+      仅安装命令行工具（原生二进制，不受 Gatekeeper 未验证提示影响）。
+      需要菜单栏界面时：
         brew install --cask YangChen-cn/tap/topictidy
     EOS
   end
