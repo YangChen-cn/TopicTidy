@@ -7,8 +7,13 @@ struct OrganizerView: View {
     @State private var showPreview = false
     @State private var previewMoves: [Move] = []
     private var groups: [TopicGroup] { TopicGroup.make(model.snapshot?.members ?? []) }
+    /// Members of dismissed topics leave the window along with their topic.
+    private var visibleMembers: [Member] {
+        let visible = Set(groups.map(\.id))
+        return (model.snapshot?.members ?? []).filter { visible.contains($0.topic_key ?? "unclassified") }
+    }
     private var members: [Member] {
-        (model.snapshot?.members ?? []).filter {
+        visibleMembers.filter {
             (selection == "all" || ($0.topic_key ?? "unclassified") == selection)
             && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search))
         }
@@ -94,15 +99,15 @@ struct OrganizerView: View {
                             if group.isApplied {
                                 Label("这个主题已整理", systemImage: "checkmark.circle.fill")
                                     .foregroundStyle(.secondary)
-                            } else if group.isDismissed {
-                                Text("这个主题已取消").foregroundStyle(.secondary)
-                                Spacer()
-                                Button("恢复主题") {
-                                    Task { await model.edit("restore-topic", [group.id]) }
-                                }
                             } else {
                                 Button("取消这个主题", role: .destructive) {
-                                    Task { await model.edit("dismiss-topic", [group.id]) }
+                                    Task {
+                                        await model.edit("dismiss-topic", [group.id])
+                                        // The topic leaves the list, so fall back to "all".
+                                        if !TopicGroup.make(model.snapshot?.members ?? []).contains(where: { $0.id == selection }) {
+                                            selection = "all"
+                                        }
+                                    }
                                 }
                                 Spacer()
                                 Button("确认这个主题…") { preview(group) }

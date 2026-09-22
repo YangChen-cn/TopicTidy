@@ -11,7 +11,7 @@ struct TopicGroupView: View {
         VStack(alignment: .leading, spacing: 0) {
             Button { expanded.toggle() } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: group.isApplied ? "checkmark.circle.fill" : group.isDismissed ? "xmark.circle" : group.isUnclassified ? "tray" : "folder.fill")
+                    Image(systemName: group.isApplied ? "checkmark.circle.fill" : group.isUnclassified ? "tray" : "folder.fill")
                         .foregroundStyle(group.isUnclassified ? Color.secondary : Color.accentColor)
                         .font(.system(size: 16)).frame(width: 22)
                     VStack(alignment: .leading, spacing: 3) {
@@ -35,20 +35,14 @@ struct TopicGroupView: View {
                             EvidenceList(evidence: group.evidence)
                         }.font(.caption).foregroundStyle(.secondary).padding(.vertical, 8)
                     }
-                    if !group.isUnclassified {
+                    if !group.isUnclassified && group.isPending {
                         HStack {
-                            if group.isDismissed {
-                                Button("恢复主题") {
-                                    Task { await model.edit("restore-topic", [group.id]) }
-                                }
-                            } else if group.isPending {
-                                Button("取消此主题", role: .destructive) {
-                                    Task { await model.edit("dismiss-topic", [group.id]) }
-                                }
-                                Spacer()
-                                Button("确认此主题…") { onPreview(group) }
-                                    .buttonStyle(.borderedProminent)
+                            Button("取消此主题", role: .destructive) {
+                                Task { await model.edit("dismiss-topic", [group.id]) }
                             }
+                            Spacer()
+                            Button("确认此主题…") { onPreview(group) }
+                                .buttonStyle(.borderedProminent)
                         }.padding(.vertical, 8)
                     }
                 }.padding(.horizontal, 10)
@@ -60,7 +54,6 @@ struct TopicGroupView: View {
     private var statusText: String {
         if group.isUnclassified { return "\(group.members.count) 个文件 · 保留原位" }
         if group.isApplied { return "已整理 · \(group.members.count) 个文件" }
-        if group.isDismissed { return "已取消 · 可恢复" }
         return "\(group.pendingCount) 个文件 · 评分 \(Int(group.confidence * 100))"
     }
 }

@@ -24,7 +24,7 @@ TopicTidy 不按扩展名粗暴分类。它综合课程号、文件名、下载�
 - 课程号、文件名、来源 URL、正文关键词与本地语义混合判断
 - PDF、DOCX、PPTX、TXT 和 Markdown 文本提取
 - Apple NaturalLanguage embedding；已安装语言支持可选的本地 Translation pivot
-- 主题级确认、取消、恢复和撤销，不必整批接受
+- 主题级确认、取消和撤销，不必整批接受；取消的主题会立刻从列表移除，重新扫描可以再次提出
 - SQLite 保存方案、人工修正、目录关联和逐文件操作日志
 - 默认离线、默认保守、绝不覆盖同名文件
 - 纯原生 Swift：同一套 `TopicTidyCore` 同时提供菜单栏 GUI 与 `tt` CLI，运行时不需要 Python、pip 或 Xcode

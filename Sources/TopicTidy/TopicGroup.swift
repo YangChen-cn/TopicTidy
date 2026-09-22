@@ -15,6 +15,9 @@ struct TopicGroup: Identifiable {
     static func make(_ members: [Member]) -> [TopicGroup] {
         Dictionary(grouping: members, by: { $0.topic_key ?? "unclassified" })
             .map { key, files in TopicGroup(id: key, name: files.first?.topic ?? "未分类", members: files) }
+            // A dismissed topic leaves the list instead of lingering as a
+            // cancelled row; re-scanning proposes it again.
+            .filter { !$0.isDismissed }
             .sorted {
                 if $0.isUnclassified != $1.isUnclassified { return !$0.isUnclassified }
                 return $0.name.localizedStandardCompare($1.name) == .orderedAscending

@@ -31,5 +31,7 @@ let package = Package(
             dependencies: ["TopicTidyCore"],
             exclude: ["Fixtures"]
         ),
+        // Presentation rules of the SwiftUI client (topic grouping).
+        .testTarget(name: "TopicTidyUITests", dependencies: ["TopicTidy"]),
     ]
 )
