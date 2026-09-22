@@ -1,0 +1,49 @@
+name: Tap
+
+# Manual entry point for the Homebrew tap: use it to verify TAP_GITHUB_TOKEN,
+# or to re-run a tap update after a release without pushing a new tag.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（例如 0.10.1）；留空则用最新 tag"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  tap:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check tap token
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$TAP_GITHUB_TOKEN" ]; then
+            echo "::error::TAP_GITHUB_TOKEN is not configured; cannot update the Homebrew tap."
+            echo "Add a PAT with write access to YangChen-cn/homebrew-tap as TAP_GITHUB_TOKEN."
+            exit 1
+          fi
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="${{ inputs.version }}"
+          if [ -z "$version" ]; then
+            version="$(git describe --tags --abbrev=0)"
+          fi
+          echo "version=${version#v}" >> "$GITHUB_OUTPUT"
+          echo "tap will point at ${version#v}"
+
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: scripts/publish_tap.sh --version "${{ steps.version.outputs.version }}"
