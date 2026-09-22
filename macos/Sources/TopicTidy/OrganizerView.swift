@@ -69,7 +69,9 @@ struct OrganizerView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 8) {
                             if selection == "all" {
-                                ForEach(TopicGroup.make(members)) { TopicGroupView(group: $0, model: model) }
+                                ForEach(TopicGroup.make(members)) { group in
+                                    TopicGroupView(group: group, model: model) { preview($0) }
+                                }
                             } else {
                                 if let group = groups.first(where: { $0.id == selection }), !group.isUnclassified {
                                     DisclosureGroup("匹配依据 · 评分 \(Int(group.confidence * 100))") {
@@ -86,6 +88,28 @@ struct OrganizerView: View {
                             Text("没有匹配的文件").font(.callout).foregroundStyle(.secondary)
                         }
                     }
+                    if let group = groups.first(where: { $0.id == selection }), !group.isUnclassified {
+                        Divider()
+                        HStack {
+                            if group.isApplied {
+                                Label("这个主题已整理", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            } else if group.isDismissed {
+                                Text("这个主题已取消").foregroundStyle(.secondary)
+                                Spacer()
+                                Button("恢复主题") {
+                                    Task { await model.edit("restore-topic", [group.id]) }
+                                }
+                            } else {
+                                Button("取消这个主题", role: .destructive) {
+                                    Task { await model.edit("dismiss-topic", [group.id]) }
+                                }
+                                Spacer()
+                                Button("确认这个主题…") { preview(group) }
+                                    .buttonStyle(.borderedProminent)
+                            }
+                        }.padding(.horizontal, 16).padding(.vertical, 11)
+                    }
                 }
                 Divider()
                 HStack {
@@ -100,8 +124,10 @@ struct OrganizerView: View {
                 .disabled(model.busy)
             Button("预览整理", systemImage: "folder.badge.plus") {
                 Task {
-                    await model.perform("preview")
-                    if model.error == nil { previewMoves = model.moves; showPreview = true }
+                    if await model.perform("preview") {
+                        previewMoves = model.moves
+                        showPreview = true
+                    }
                 }
             }.disabled(model.busy || !(model.snapshot?.members.contains { $0.topic != nil && !$0.excluded } ?? false))
             SettingsLink { Label("设置", systemImage: "gearshape") }
@@ -110,6 +136,15 @@ struct OrganizerView: View {
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("好") { model.error = nil }
         } message: { Text(model.error ?? "") }
-        .frame(minWidth: 700, minHeight: 460)
+        .frame(minWidth: 620, minHeight: 400)
+    }
+
+    private func preview(_ group: TopicGroup) {
+        Task {
+            if let moves = await model.preview(topicKey: group.id) {
+                previewMoves = moves
+                showPreview = true
+            }
+        }
     }
 }

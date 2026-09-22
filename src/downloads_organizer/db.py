@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS app_settings(
@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS plan_members(
  id INTEGER PRIMARY KEY, plan_id INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
  file_id INTEGER NOT NULL REFERENCES files(id), topic_key TEXT REFERENCES topics(topic_key),
  group_name TEXT, confidence REAL NOT NULL,
- reasons TEXT NOT NULL DEFAULT '[]', evidence TEXT NOT NULL DEFAULT '[]', conflicts TEXT NOT NULL DEFAULT '[]', excluded INTEGER NOT NULL DEFAULT 0,
+ reasons TEXT NOT NULL DEFAULT '[]', evidence TEXT NOT NULL DEFAULT '[]', conflicts TEXT NOT NULL DEFAULT '[]',
+ excluded INTEGER NOT NULL DEFAULT 0, applied INTEGER NOT NULL DEFAULT 0,
  source_fingerprint TEXT NOT NULL, destination TEXT
 );
 CREATE TABLE IF NOT EXISTS corrections(
@@ -129,6 +130,10 @@ class Database:
                                 (row["plan_id"], log["file_id"]),
                             ).fetchone()
                             if member and member["source_fingerprint"] == log["fingerprint"]:
+                                self.conn.execute(
+                                    "UPDATE plan_members SET applied=1 WHERE plan_id=? AND file_id=?",
+                                    (row["plan_id"], log["file_id"]),
+                                )
                                 self.conn.execute(
                                     """INSERT INTO associations(
                                     topic_key,file_fingerprint,confirmed_at,active

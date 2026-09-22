@@ -7,7 +7,7 @@ struct PanelView: View {
     @State private var previewMoves: [Move] = []
     @Environment(\.openWindow) private var openWindow
     private var groups: [TopicGroup] { TopicGroup.make(model.snapshot?.members ?? []) }
-    private var movableCount: Int { model.snapshot?.members.filter { $0.topic != nil && !$0.excluded }.count ?? 0 }
+    private var movableCount: Int { model.snapshot?.members.filter { $0.topic != nil && !$0.excluded && !$0.applied }.count ?? 0 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -75,19 +75,32 @@ struct PanelView: View {
                 }.padding(.horizontal, 14).padding(.vertical, 10)
                 ScrollView {
                     LazyVStack(spacing: 7) {
-                        ForEach(groups) { TopicGroupView(group: $0, model: model) }
+                        ForEach(groups) { group in
+                            TopicGroupView(group: group, model: model) { preview($0) }
+                        }
                     }.padding(.horizontal, 12).padding(.bottom, 12)
                 }.frame(height: min(320, max(150, CGFloat(groups.count) * 64)))
                 HStack {
                     Text("确认前不移动文件").font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("整理 \(movableCount) 个文件…") {
+                    Button("整理全部 \(movableCount) 个…") {
                         Task {
-                            await model.perform("preview")
-                            if model.error == nil { previewMoves = model.moves; showPreview = true }
+                            if await model.perform("preview") {
+                                previewMoves = model.moves
+                                showPreview = true
+                            }
                         }
                     }.buttonStyle(.borderedProminent).disabled(model.busy || movableCount == 0)
                 }.padding(12)
+            }
+        }
+    }
+
+    private func preview(_ group: TopicGroup) {
+        Task {
+            if let moves = await model.preview(topicKey: group.id) {
+                previewMoves = moves
+                showPreview = true
             }
         }
     }

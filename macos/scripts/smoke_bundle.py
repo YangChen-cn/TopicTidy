@@ -16,10 +16,11 @@ with tempfile.TemporaryDirectory(prefix='topictidy-relocation-') as directory:
     resources = app / 'Contents/Resources'
     downloads = root / 'Downloads'
     downloads.mkdir()
-    for index in (1, 2):
-        (downloads / f'ELEC6008 Lecture {index}.md').write_text(
-            f'# ELEC6008 Lecture {index}\nMachine learning classification regression models and training data.'
-        )
+    for course in ('ELEC6008', 'ELEC6103'):
+        for index in (1, 2):
+            (downloads / f'{course} Lecture {index}.md').write_text(
+                f'# {course} Lecture {index}\nMachine learning classification regression models and training data.'
+            )
     env = {
         'PATH': '/usr/bin:/bin', 'HOME': os.environ['HOME'],
         'DOWNLOADS_ORGANIZER_DOWNLOADS': str(downloads),
@@ -39,15 +40,23 @@ with tempfile.TemporaryDirectory(prefix='topictidy-relocation-') as directory:
     assert call(action='status')['snapshot']['plan_id'] is None
     scanned = call(action='scan')
     plan = scanned['snapshot']['plan_id']
-    assert len(scanned['snapshot']['members']) == 2, scanned
+    assert len(scanned['snapshot']['members']) == 4, scanned
     call(action='edit', plan_id=plan, command='rename', args=['ELEC6008', 'Demo Course'])
-    moves = call(action='preview', plan_id=plan)['moves']
+    topic_key = next(member['topic_key'] for member in scanned['snapshot']['members']
+                     if member['topic'] == 'ELEC6008')
+    moves = call(action='preview', plan_id=plan, topic_key=topic_key)['moves']
     assert len(moves) == 2
     applied = call(action='apply', plan_id=plan, confirmed=True, moves=moves)
+    assert applied['snapshot']['plan_id'] == plan
+    remaining_key = next(member['topic_key'] for member in applied['snapshot']['members']
+                         if not member['applied'] and member['topic_key'])
+    dismissed = call(action='edit', plan_id=plan, command='dismiss-topic', args=[remaining_key])
+    assert any(member['excluded'] for member in dismissed['snapshot']['members'])
+    call(action='edit', plan_id=plan, command='restore-topic', args=[remaining_key])
     assert all(Path(item['destination']).exists() for item in moves)
     batch = applied['snapshot']['history'][0]['id']
     call(action='undo', batch_id=batch, confirmed=True)
-    assert len(list(downloads.glob('*.md'))) == 2
+    assert len(list(downloads.glob('*.md'))) == 4
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
-    print('PASS: relocated bundle; network denied; scan/edit/preview/apply/undo; signature preserved')
+    print('PASS: relocated bundle; network denied; per-topic apply/dismiss/restore/undo; signature preserved')
     print(scanned['message'])

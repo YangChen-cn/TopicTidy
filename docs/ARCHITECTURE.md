@@ -33,3 +33,5 @@ SwiftUI 客户端位于 `macos/`，使用 `MenuBarExtra`、`NavigationSplitView`
 分发包包含 Python 3.12、固定依赖、编译后的 NaturalLanguage/Translation helper 和应用图标。Backend 使用 Bundle.resourceURL 定位运行时，以 `-I -B` 启动；`TOPICTIDY_HELPERS` 只选择包内可执行文件，不再要求终端用户安装编译器。每日任务保留该 helper 路径，并禁用字节码写入，避免改变签名资源。移动应用后需重新设置每日任务。打包过程清除源码安装元数据和 Swift 调试对象路径，逐项签名再封装；自签名能验证包完整性，但不具备 Developer ID 公证的系统信任。
 
 菜单栏面板宽 380 pt，空状态按内容定高，主题按 `topic_key` 分组并默认折叠。文件和证据只在展开时展示；建议、记录与设置均可在面板中完成。移动预览在菜单栏内展示，在完整窗口中以 sheet 展示；两者各自持有不可变的预览副本，确认时服务端再次验证清单。GUI 视觉验收由用户手动完成，开发阶段不默认使用 Computer Use。
+
+人工审阅以主题为单位。`plan_members.applied` 区分已执行成员与仍待审阅成员；单主题 apply 只接收该主题成员的精确预览，并为其创建独立批次，其他主题保持 draft。取消主题只修改当前方案的 excluded 状态，不写长期 correction，可随时恢复。撤销会清除对应成员的 applied 状态并重新开放原方案。

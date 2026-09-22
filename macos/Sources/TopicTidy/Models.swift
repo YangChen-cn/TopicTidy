@@ -14,6 +14,7 @@ struct Member: Decodable, Identifiable, Sendable {
     var topic_key: String?
     var confidence: Double
     var excluded: Bool
+    var applied: Bool
     var evidence: [Evidence]
     var conflicts: [String]
 }

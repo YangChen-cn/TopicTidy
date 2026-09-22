@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Build a relocatable Apple Silicon bundle, sign nested code, produce a ZIP."""
+"""Build a relocatable Apple Silicon bundle, sign nested code, produce a DMG."""
 import argparse
+import atexit
 import hashlib
 import os
 import pathlib
@@ -24,6 +25,7 @@ subprocess.run(['swift', 'build', '-c', 'release', '--package-path', str(package
                 '-Xswiftc', '-debug-prefix-map', '-Xswiftc', f'{root}=.'], check=True, env=env)
 bin_dir = subprocess.check_output(['swift', 'build', '-c', 'release', '--package-path', str(package), '--show-bin-path'], text=True).strip()
 staging = pathlib.Path(tempfile.mkdtemp(prefix='topictidy-bundle-'))
+atexit.register(shutil.rmtree, staging, ignore_errors=True)
 app = staging / 'TopicTidy.app'
 contents = app / 'Contents'
 resources = contents / 'Resources'
@@ -69,7 +71,7 @@ subprocess.run(['iconutil', '-c', 'icns', str(iconset), '-o', str(resources / 'A
 with (contents / 'Info.plist').open('wb') as handle:
     plistlib.dump({'CFBundleIdentifier': 'com.topictidy.app', 'CFBundleName': 'TopicTidy',
                   'CFBundleExecutable': 'TopicTidy', 'CFBundlePackageType': 'APPL',
-                  'CFBundleShortVersionString': '0.7.0', 'CFBundleVersion': '1',
+                  'CFBundleShortVersionString': '0.8.0', 'CFBundleVersion': '1',
                   'CFBundleIconFile': 'AppIcon', 'LSMinimumSystemVersion': '15.0',
                   'LSUIElement': True, 'NSHighResolutionCapable': True,
                   'NSDownloadsFolderUsageDescription': '读取下载文件并按您确认的方案整理。'}, handle)
@@ -92,6 +94,19 @@ dist.mkdir(exist_ok=True)
 output = dist / 'TopicTidy.app'
 if output.exists(): shutil.rmtree(output)
 shutil.copytree(app, output, symlinks=True)
-zip_path = dist / 'TopicTidy-0.7.0-arm64.zip'
-subprocess.run(['ditto', '-c', '-k', '--sequesterRsrc', '--keepParent', str(output), str(zip_path)], check=True)
-print(f'APP: {output}\nZIP: {zip_path}\nSHA256: {hashlib.sha256(zip_path.read_bytes()).hexdigest()}')
+dmg_root = staging / 'dmg-root'
+dmg_root.mkdir()
+shutil.copytree(app, dmg_root / 'TopicTidy.app', symlinks=True)
+(dmg_root / 'Applications').symlink_to('/Applications')
+dmg_path = dist / 'TopicTidy-0.8.0-arm64.dmg'
+if dmg_path.exists():
+    dmg_path.unlink()
+subprocess.run([
+    'hdiutil', 'create', '-volname', 'TopicTidy', '-srcfolder', str(dmg_root),
+    '-ov', '-format', 'UDZO', str(dmg_path),
+], check=True, stdout=subprocess.DEVNULL)
+subprocess.run(['codesign', '--force', '--sign', args.identity, '--timestamp=none', str(dmg_path)], check=True)
+subprocess.run(['codesign', '--verify', '--strict', str(dmg_path)], check=True)
+subprocess.run(['hdiutil', 'verify', str(dmg_path)], check=True, stdout=subprocess.DEVNULL)
+print(f'APP: {output}\nDMG: {dmg_path}\nSHA256: {hashlib.sha256(dmg_path.read_bytes()).hexdigest()}')
+shutil.rmtree(staging)

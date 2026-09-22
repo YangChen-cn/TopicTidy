@@ -28,9 +28,9 @@ struct MovePreview: View {
                 }
             }.frame(height: min(300, max(120, CGFloat(moves.count) * 110)))
             HStack {
-                Button("返回", action: close).keyboardShortcut(.cancelAction)
+                Button("取消", action: close).keyboardShortcut(.cancelAction)
                 Spacer()
-                Button("确认移动") {
+                Button("确认这个主题") {
                     close()
                     Task { await model.apply(moves) }
                 }.buttonStyle(.borderedProminent).disabled(moves.isEmpty || model.busy)

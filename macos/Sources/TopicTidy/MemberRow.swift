@@ -8,11 +8,11 @@ struct MemberRow: View {
     @State private var name = ""
     var body: some View {
         HStack {
-            Image(systemName: member.excluded ? "minus.circle" : "doc.text")
-                .font(.system(size: 14)).foregroundStyle(member.excluded ? Color.secondary : Color.accentColor)
+            Image(systemName: member.applied ? "checkmark.circle" : member.excluded ? "minus.circle" : "doc.text")
+                .font(.system(size: 14)).foregroundStyle(member.excluded || member.applied ? Color.secondary : Color.accentColor)
             VStack(alignment: .leading) {
                 Text(member.name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle).help(member.name)
-                Text(member.excluded ? "已排除" : URL(fileURLWithPath: member.name).pathExtension.uppercased())
+                Text(member.applied ? "已整理" : member.excluded ? "已取消" : URL(fileURLWithPath: member.name).pathExtension.uppercased())
                     .font(.caption).foregroundStyle(.secondary)
                 ForEach(member.conflicts, id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
             }
@@ -30,7 +30,7 @@ struct MemberRow: View {
                 }
                 Button("排除此文件", role: .destructive) { Task { await model.edit("exclude", [String(member.id)]) } }
             } label: { Image(systemName: "ellipsis") }
-                .menuIndicator(.hidden).menuStyle(.borderlessButton).fixedSize().accessibilityLabel("文件操作").disabled(model.busy)
+                .menuIndicator(.hidden).menuStyle(.borderlessButton).fixedSize().accessibilityLabel("文件操作").disabled(model.busy || member.applied)
         }.padding(.vertical, 5)
         .sheet(isPresented: $editing) {
             VStack(alignment: .leading, spacing: 16) {

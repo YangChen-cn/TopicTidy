@@ -8,8 +8,9 @@ import SwiftUI
     var moves: [Move] = []
     private let backend = Backend()
 
-    func perform(_ action: String, values: [String: Any] = [:]) async {
-        guard !busy else { return }
+    @discardableResult
+    func perform(_ action: String, values: [String: Any] = [:]) async -> Bool {
+        guard !busy else { return false }
         error = nil
         busy = true
         defer { busy = false }
@@ -19,13 +20,17 @@ import SwiftUI
             if request["plan_id"] == nil, let plan = snapshot?.plan_id { request["plan_id"] = plan }
             let data = try JSONSerialization.data(withJSONObject: request)
             let response = try await backend.request(data)
-            guard response.ok else { error = response.error ?? "操作失败"; return }
+            guard response.ok else { error = response.error ?? "操作失败"; return false }
             snapshot = response.snapshot
             if let text = response.message { message = text }
             if action == "preview" {
                 moves = response.moves ?? []
             }
-        } catch { self.error = error.localizedDescription }
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
     }
 
     func apply(_ moves: [Move]) async {
@@ -38,5 +43,10 @@ import SwiftUI
 
     func edit(_ command: String, _ args: [String]) async {
         await perform("edit", values: ["command": command, "args": args])
+    }
+
+    func preview(topicKey: String) async -> [Move]? {
+        guard await perform("preview", values: ["topic_key": topicKey]) else { return nil }
+        return moves
     }
 }

@@ -72,12 +72,20 @@ def plan_destination_root(db: Database, settings: Settings, plan_id: int) -> Pat
     return root
 
 
-def preview_moves(db: Database, settings: Settings, plan_id: int) -> list[dict[str, object]]:
+def preview_moves(
+    db: Database,
+    settings: Settings,
+    plan_id: int,
+    *,
+    member_ids: set[int] | None = None,
+) -> list[dict[str, object]]:
     organized_root = plan_destination_root(db, settings, plan_id)
     reserved: set[Path] = set()
     moves = []
     for row in plan_rows(db, plan_id):
-        if row["excluded"] or not row["group_name"]:
+        if row["excluded"] or row["applied"] or not row["group_name"]:
+            continue
+        if member_ids is not None and int(row["id"]) not in member_ids:
             continue
         source = Path(row["path"])
         folder = organized_root / safe_topic_name(row["group_name"])
@@ -100,6 +108,7 @@ def apply_plan(
     plan_id: int,
     *,
     operation_kind: str = "apply",
+    member_ids: set[int] | None = None,
 ) -> tuple[int, list[dict[str, str]]]:
     organized_root = plan_destination_root(db, settings, plan_id)
     if organized_root.is_symlink():
@@ -108,7 +117,9 @@ def apply_plan(
         raise RuntimeError("整理根目录已存在，但不是目录")
     if operation_kind not in {"apply", "auto_apply"}:
         raise ValueError("不支持的整理操作类型")
-    moves = preview_moves(db, settings, plan_id)
+    moves = preview_moves(db, settings, plan_id, member_ids=member_ids)
+    if not moves:
+        raise ValueError("没有可整理的文件")
     now = time.time()
     cursor = db.conn.execute(
         "INSERT INTO operation_batches(plan_id,kind,status,created_at) VALUES(?, ?, 'running', ?)",
@@ -144,6 +155,7 @@ def apply_plan(
                 confirmed_at=excluded.confirmed_at,active=1""",
                 (move["topic_key"], move["fingerprint"], time.time()),
             )
+            db.conn.execute("UPDATE plan_members SET applied=1 WHERE id=?", (move["member_id"],))
         except Exception as exc:
             status, error = "skipped", str(exc)
         db.conn.execute(
@@ -154,7 +166,13 @@ def apply_plan(
         results.append({"source": str(src), "destination": str(dst), "status": status, "error": error or ""})
     final = "completed" if all(r["status"] == "moved" for r in results) else "partial"
     db.conn.execute("UPDATE operation_batches SET status=?,completed_at=? WHERE id=?", (final, time.time(), batch_id))
-    db.conn.execute("UPDATE plans SET status=? WHERE id=?", ("applied" if final == "completed" else "partial", plan_id))
+    remaining = db.conn.execute(
+        """SELECT COUNT(*) FROM plan_members
+        WHERE plan_id=? AND excluded=0 AND applied=0 AND group_name IS NOT NULL""",
+        (plan_id,),
+    ).fetchone()[0]
+    plan_status = "draft" if remaining else ("applied" if final == "completed" else "partial")
+    db.conn.execute("UPDATE plans SET status=? WHERE id=?", (plan_status, plan_id))
     db.conn.commit()
     return batch_id, results
 
@@ -194,6 +212,10 @@ def undo_batch(db: Database, settings: Settings, batch_id: int) -> tuple[int, li
             os.rename(current, original_path)
             db.conn.execute("UPDATE files SET path=?,name=?,status='active' WHERE id=?", (str(original_path), original_path.name, row["file_id"]))
             db.conn.execute("UPDATE associations SET active=0 WHERE file_fingerprint=?", (row["fingerprint"],))
+            db.conn.execute(
+                "UPDATE plan_members SET applied=0 WHERE plan_id=? AND file_id=?",
+                (original["plan_id"], row["file_id"]),
+            )
         except Exception as exc:
             status, error = "skipped", str(exc)
         db.conn.execute("UPDATE operation_logs SET status=?,error=?,completed_at=? WHERE id=?", (status, error, time.time(), log_id))
@@ -201,6 +223,7 @@ def undo_batch(db: Database, settings: Settings, batch_id: int) -> tuple[int, li
         results.append({"source": str(current), "destination": str(original_path), "status": status, "error": error or ""})
     final = "completed" if all(r["status"] == "undone" for r in results) else "partial"
     db.conn.execute("UPDATE operation_batches SET status=?,completed_at=? WHERE id=?", (final, time.time(), undo_id))
+    db.conn.execute("UPDATE plans SET status='draft' WHERE id=?", (original["plan_id"],))
     db.conn.commit()
     return undo_id, results
 
@@ -208,6 +231,17 @@ def undo_batch(db: Database, settings: Settings, batch_id: int) -> tuple[int, li
 def edit_plan(db: Database, plan_id: int, command: str, args: list[str], organized_dir: Path | None = None) -> str:
     correction_fingerprint = ""
     correction_topic: str | None = None
+    if command in {"dismiss-topic", "restore-topic"} and len(args) == 1:
+        excluded = 1 if command == "dismiss-topic" else 0
+        cursor = db.conn.execute(
+            """UPDATE plan_members SET excluded=?
+            WHERE plan_id=? AND topic_key=? AND applied=0""",
+            (excluded, plan_id, args[0]),
+        )
+        if not cursor.rowcount:
+            raise ValueError("主题不存在或已经整理")
+        db.conn.commit()
+        return "主题已取消" if excluded else "主题已恢复"
     if command == "rename" and len(args) >= 2:
         old, new = args[0], safe_topic_name(" ".join(args[1:]))
         keys = [row[0] for row in db.conn.execute(

@@ -26,6 +26,7 @@ def snapshot(db, settings, plan_id=None):
                 'id': row['id'], 'name': row['name'], 'path': row['path'],
                 'topic': row['group_name'], 'topic_key': row['topic_key'],
                 'confidence': row['confidence'], 'excluded': bool(row['excluded']),
+                'applied': bool(row['applied']),
                 'evidence': loads(row['evidence'], []), 'conflicts': loads(row['conflicts'], []),
             })
     history = [dict(row) for row in db.conn.execute(
@@ -63,19 +64,36 @@ def dispatch(request):
             elif action == 'edit':
                 message = edit_plan(db, plan_id, request['command'], request['args'], settings.organized_dir)
             elif action == 'preview':
+                topic_key = request.get('topic_key')
+                member_ids = ({int(row['id']) for row in plan_rows(db, plan_id)
+                               if row['topic_key'] == topic_key} if topic_key else None)
                 moves = [{k: str(v) if isinstance(v, Path) else v for k, v in move.items()}
-                         for move in preview_moves(db, settings, plan_id)]
+                         for move in preview_moves(db, settings, plan_id, member_ids=member_ids)]
             elif action == 'apply':
                 if request.get('confirmed') is not True:
                     raise ValueError('必须先审阅移动清单并确认')
+                requested_ids = {int(move['member_id']) for move in request.get('moves', [])}
+                if not requested_ids:
+                    raise ValueError('移动清单已变化，请重新预览后确认')
+                pending = [row for row in plan_rows(db, plan_id)
+                           if not row['excluded'] and not row['applied'] and row['group_name']]
+                all_pending_ids = {int(row['id']) for row in pending}
+                selected_topics = {row['topic_key'] for row in pending if int(row['id']) in requested_ids}
+                selected_topic_ids = ({int(row['id']) for row in pending
+                                       if row['topic_key'] in selected_topics}
+                                      if len(selected_topics) == 1 else set())
+                if frozenset(requested_ids) not in {frozenset(all_pending_ids), frozenset(selected_topic_ids)}:
+                    raise ValueError('只能确认完整主题或全部待整理主题')
                 current = [{k: str(v) if isinstance(v, Path) else v for k, v in move.items()}
-                           for move in preview_moves(db, settings, plan_id)]
+                           for move in preview_moves(db, settings, plan_id, member_ids=requested_ids)]
                 if request.get('moves') != current:
                     raise ValueError('移动清单已变化，请重新预览后确认')
-                batch, results = apply_plan(db, settings, plan_id)
+                batch, results = apply_plan(db, settings, plan_id, member_ids=requested_ids)
                 message = f"批次 {batch}：已移动 {sum(r['status'] == 'moved' for r in results)}，跳过 {sum(r['status'] != 'moved' for r in results)}"
                 message += ''.join('；' + r['error'] for r in results if r['error'])
-                plan_id = None
+                plan = db.conn.execute('SELECT status FROM plans WHERE id=?', (plan_id,)).fetchone()
+                if plan['status'] != 'draft':
+                    plan_id = None
             elif action == 'undo':
                 if request.get('confirmed') is not True:
                     raise ValueError('撤销需要确认')

@@ -5,6 +5,10 @@ struct TopicGroup: Identifiable {
     let name: String
     let members: [Member]
     var isUnclassified: Bool { id == "unclassified" }
+    var isApplied: Bool { !isUnclassified && members.allSatisfy(\.applied) }
+    var isDismissed: Bool { !isApplied && !isUnclassified && members.allSatisfy(\.excluded) }
+    var isPending: Bool { !isUnclassified && members.contains { !$0.applied && !$0.excluded } }
+    var pendingCount: Int { members.count { !$0.applied && !$0.excluded } }
     var confidence: Double { members.map(\.confidence).min() ?? 0 }
     var evidence: [Evidence] { members.first?.evidence ?? [] }
 

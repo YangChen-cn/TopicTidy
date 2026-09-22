@@ -49,6 +49,47 @@ def test_apply_skips_file_changed_after_plan(workspace):
     assert changed.exists()
 
 
+def test_apply_one_topic_keeps_other_topic_draft(workspace):
+    settings, db = workspace
+    for course in ("ELEC6008", "ELEC6103"):
+        put(settings.downloads, f"{course} Lecture 1.md", "one")
+        put(settings.downloads, f"{course} Lecture 2.md", "two")
+    scan(db, settings)
+    groups, unclassified = cluster(db, settings)
+    plan_id = save_plan(db, settings, groups, unclassified)
+    first_topic = db.conn.execute(
+        "SELECT topic_key FROM plan_members WHERE plan_id=? ORDER BY group_name LIMIT 1",
+        (plan_id,),
+    ).fetchone()[0]
+    member_ids = {row[0] for row in db.conn.execute(
+        "SELECT id FROM plan_members WHERE plan_id=? AND topic_key=?", (plan_id, first_topic)
+    )}
+
+    batch_id, results = apply_plan(db, settings, plan_id, member_ids=member_ids)
+
+    assert batch_id and len(results) == 2
+    assert db.conn.execute("SELECT status FROM plans WHERE id=?", (plan_id,)).fetchone()[0] == "draft"
+    assert db.conn.execute(
+        "SELECT COUNT(*) FROM plan_members WHERE plan_id=? AND applied=1", (plan_id,)
+    ).fetchone()[0] == 2
+    assert len(preview_moves(db, settings, plan_id)) == 2
+
+
+def test_dismiss_topic_is_plan_only_and_reversible(workspace):
+    settings, db = workspace
+    plan_id = _course_plan(settings, db)
+    topic_key = db.conn.execute(
+        "SELECT topic_key FROM plan_members WHERE plan_id=? LIMIT 1", (plan_id,)
+    ).fetchone()[0]
+
+    assert edit_plan(db, plan_id, "dismiss-topic", [topic_key]) == "主题已取消"
+    assert preview_moves(db, settings, plan_id) == []
+    assert db.conn.execute("SELECT COUNT(*) FROM corrections").fetchone()[0] == 0
+
+    assert edit_plan(db, plan_id, "restore-topic", [topic_key]) == "主题已恢复"
+    assert len(preview_moves(db, settings, plan_id)) == 2
+
+
 def test_undo_skips_when_original_path_is_occupied(workspace):
     settings, db = workspace
     plan_id = _course_plan(settings, db)

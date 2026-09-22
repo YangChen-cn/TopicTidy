@@ -146,9 +146,9 @@ tt propose --no-semantic
 
 ## macOS 菜单栏应用（SwiftUI）
 
-分发包支持 **Apple Silicon、macOS 15+**。解压 `TopicTidy-0.7.0-arm64.zip`，把 `TopicTidy.app` 拖到 Applications 后打开，点击菜单栏托盘图标即可使用。无需安装 Python、pip、Xcode 或下载模型。
+分发包支持 **Apple Silicon、macOS 15+**。打开 `TopicTidy-0.8.0-arm64.dmg`，把 `TopicTidy.app` 拖到 Applications 后打开，点击菜单栏托盘图标即可使用。无需安装 Python、pip、Xcode 或下载模型。
 
-菜单栏使用约 380 pt 宽的紧凑面板，空状态随内容收起，主题默认折叠，按需展开文件和匹配依据。直接提供扫描、主题与证据审阅、重命名/移动成员/拆分/合并/排除、移动清单确认、历史撤销、目标目录及每日任务设置。需要更多空间时可打开完整窗口。应用启动只读取状态，不自动扫描或移动；第一次扫描时系统可能请求 Downloads 访问权限。
+菜单栏使用约 380 pt 宽的紧凑面板，空状态随内容收起，主题默认折叠，按需展开文件和匹配依据。每个主题可以独立确认、取消或恢复；确认一个主题只移动该主题，其他建议继续留在方案中。面板直接提供扫描、主题与证据审阅、重命名/移动成员/拆分/合并/排除、移动清单确认、历史撤销、目标目录及每日任务设置。需要更多空间时可打开完整窗口。应用启动只读取状态，不自动扫描或移动；第一次扫描时系统可能请求 Downloads 访问权限。
 
 分发包使用用户提供的 **TopicTidy 自签名证书**，包含独立 Python 3.12 与预编译 Apple helper，通过包内相对路径运行。它不依赖开发机目录，也不需要项目 `.venv`。自签名不等于 Apple Developer ID 公证，接收方的 Gatekeeper 可能阻止首次打开；确认来源后可在系统“隐私与安全性”中允许打开。不要关闭系统安全检查。Intel Mac 暂不支持。
 
@@ -161,6 +161,6 @@ python3 macos/scripts/build_app.py --identity TopicTidy
 open dist/TopicTidy.app
 ```
 
-构建阶段下载校验过 SHA-256 的独立 Python，并按 `macos/runtime-constraints.txt` 安装依赖；运行阶段不访问网络。`--runtime <archive>` 可复用已下载的固定运行时。脚本逐一签名嵌套代码、验证完整 bundle、检查源码/临时目录泄漏，生成 app 与 ZIP。图标由内置 imagegen 生成，见 [素材记录](macos/Assets/README.md)。
+构建阶段下载校验过 SHA-256 的独立 Python，并按 `macos/runtime-constraints.txt` 安装依赖；运行阶段不访问网络。`--runtime <archive>` 可复用已下载的固定运行时。脚本逐一签名嵌套代码、验证完整 bundle、检查源码/临时目录泄漏，生成 app 与签名 DMG。图标由内置 imagegen 生成，见 [素材记录](macos/Assets/README.md)。
 
 原生界面通过本地 JSON 子进程调用 `gui_bridge`，复用服务层与 SQLite。所有请求在同一进程锁内恢复和执行；移动必须提交与当前预览一致的清单。测试使用临时 Downloads，不操作个人下载文件。

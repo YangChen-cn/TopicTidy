@@ -11,7 +11,7 @@ import SwiftUI
             OrganizerView(model: model)
                 .task { await model.perform("status") }
         }
-        .defaultSize(width: 820, height: 540)
+        .defaultSize(width: 720, height: 480)
         Settings { SettingsView(model: model) }
     }
 }
