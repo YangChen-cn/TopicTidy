@@ -47,4 +47,6 @@ GUI 的 `AppModel` 直接调用 `AppService`（actor），不再启动子进程�
 
 ## 分发边界
 
-`TopicTidy.app` 只包含 `Contents/MacOS/TopicTidy`、`Contents/Resources/tt` 和图标，没有 Python、没有 helper、没有资源 bundle——两个 benchmark fixture 以 Swift 字面量内嵌，因此应用可任意搬迁。`scripts/build_app.sh` 负责 release 构建、图标生成、bundle 卫生检查（禁止出现 `python`/`*.py`/构建机路径）、逐项签名、DMG 与大小报告。`tt` 与 GUI 共享同一个 `TopicTidyCore`，不存在两套实现。
+`TopicTidy.app` 只包含 `Contents/MacOS/TopicTidy`、`Contents/Resources/tt` 和图标，没有 Python、没有 helper、没有资源 bundle——两个 benchmark fixture 以 Swift 字面量内嵌，因此应用可任意搬迁。`scripts/build_app.sh` 负责 release 构建、图标生成、bundle 卫生检查（禁止出现 `python`/`*.py`/构建机路径）、逐项签名、DMG 与大小报告；`scripts/package_cli.sh` 单独打包 `tt` 加 LICENSE/README；`scripts/publish_tap.sh` 用发布产物的 SHA-256 渲染并推送 Homebrew tap。`tt` 与 GUI 共享同一个 `TopicTidyCore`，不存在两套实现。
+
+版本只在 `AppInfo.version` 里写一次：构建脚本、`tt --version`、Info.plist 和 Homebrew tap 都从它派生，release workflow 在打标签时会校验 tag 与它一致。发布流程是 `.github/workflows/release.yml`：push `v*` 标签 → 跑测试与基准 → 构建 DMG 与 CLI 压缩包 → 生成 `SHA256SUMS.txt` → 创建 GitHub Release。`install.sh` 从该 Release 取件、校验 SHA-256 后安装到 `~/.local/bin/tt`。

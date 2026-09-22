@@ -51,6 +51,14 @@ The clustering rules, thresholds, evidence wording, and naming logic were migrat
 
 `Resources/fixtures/*.json` is the editable source of truth; `Tests/TopicTidyCoreTests/FixtureTests.swift` fails if the embedded Swift copies drift from it.
 
+## Release Pipeline
+
+- `AppInfo.version` (in `Sources/TopicTidyCore/Config/AppInfo.swift`) is the only version literal. `scripts/build_app.sh` reads it for the bundle, `tt --version` reports it, and the release workflow refuses to publish when the pushed tag does not match.
+- Pushing a `v*` tag runs `.github/workflows/release.yml`: toolchain check, `swift test`, benchmark gates, `scripts/build_app.sh`, `scripts/package_cli.sh`, `SHA256SUMS.txt`, then a GitHub Release with the DMG, the CLI archive and the checksums. No Python distribution is published any more.
+- `install.sh` is the user-facing CLI installer: macOS + arm64 only, latest release by default, SHA-256 verified against `SHA256SUMS.txt`, installed to `~/.local/bin/tt` via write-and-rename, with a PATH hint. It accepts `TOPICTIDY_API_BASE`/`TOPICTIDY_DOWNLOAD_BASE` overrides so it can be tested against a local mock before a release exists.
+- The Homebrew tap is `YangChen-cn/homebrew-tap`, prepared from `packaging/homebrew/` by `scripts/publish_tap.sh`. Never open pull requests against Homebrew's official repositories from CI.
+- CI runs on a macOS 26 runner image; `macos-15` ships Swift 6.1 and cannot build the package.
+
 ## Development
 
 ```bash

@@ -31,29 +31,46 @@ TopicTidy 不按扩展名粗暴分类。它综合课程号、文件名、下载�
 
 ## 安装
 
-### GUI
+适用于 Apple Silicon（arm64）和 macOS 15 或更高版本。无需安装 Python、pip 或 Xcode。
 
-适用于 Apple Silicon 和 macOS 15 或更高版本。无需安装 Python、pip 或 Xcode。
+### Homebrew（推荐）
 
-1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-0.9.0-arm64.dmg`。
+GUI + CLI：安装菜单栏应用，并把应用内的 `tt` 暴露到终端。
+
+```bash
+brew install --cask YangChen-cn/tap/topictidy
+```
+
+只装命令行：
+
+```bash
+brew install YangChen-cn/tap/topictidy-cli
+```
+
+### 一键安装脚本（仅 CLI）
+
+不需要 Homebrew：自动获取最新 Release、校验 SHA-256，安装到 `~/.local/bin/tt`，重复执行即为升级。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YangChen-cn/TopicTidy/main/install.sh | sh
+```
+
+可用 `TOPICTIDY_VERSION=0.10.0` 指定版本，`TOPICTIDY_INSTALL_DIR` 指定安装目录。
+
+### DMG
+
+1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-0.10.0-arm64.dmg`。
 2. 打开 DMG，把 TopicTidy 拖入 Applications。
 3. 启动后点击菜单栏托盘图标。
 
 当前分发包使用 `TopicTidy` 自签名证书，尚未经过 Apple Developer ID 公证。首次打开时，Gatekeeper 可能要求在“系统设置 → 隐私与安全性”中确认来源。
 
-### CLI
-
-`tt` 是原生 Swift 二进制，从源码构建：
+### 从源码
 
 ```bash
 swift build -c release
-.build/release/tt --help
-```
-
-也可以直接用应用包内的 `tt`（每日任务使用的就是它）：
-
-```bash
-/Applications/TopicTidy.app/Contents/Resources/tt --help
+.build/release/tt --help          # CLI
+open .build/release/…             # 或运行 .app（见开发一节）
 ```
 
 ## CLI 快速开始
@@ -82,7 +99,7 @@ tt semantic status
 
 ## GUI
 
-菜单栏面板可完成扫描、主题审阅、文件调整、单主题确认、历史撤销和设置。完整窗口提供更宽的主题侧栏与证据视图。SwiftUI 只负责界面，扫描、分类、SQLite、移动和恢复都由 `TopicTidyCore` 在同一进程内完成。
+菜单栏面板可完成扫描、主题审阅、文件调整、单主题确认、历史撤销和设置。完整窗口提供更宽的主题侧栏与证据视图，工具栏的 ⓘ 打开「关于 TopicTidy」——版本、作者与主要特点都在那里。SwiftUI 只负责界面，扫描、分类、SQLite、移动和恢复都由 `TopicTidyCore` 在同一进程内完成。
 
 运行阶段不联网，也不依赖开发机路径。
 
@@ -93,7 +110,7 @@ tt semantic status
 | `.dmg` | 43.1 MiB | 3.19 MiB | 92.6% |
 <!-- SIZE_TABLE_END -->
 
-上表由 `scripts/build_app.sh` 对同一份应用实测生成；原始字节数保存在 `dist/TopicTidy-0.9.0-size-report.json`。完整的速度与等价性对比见 [docs/MIGRATION.md](docs/MIGRATION.md)。
+上表由 `scripts/build_app.sh` 对同一份应用实测生成；原始字节数保存在 `dist/TopicTidy-0.10.0-size-report.json`。完整的速度与等价性对比见 [docs/MIGRATION.md](docs/MIGRATION.md)。
 
 ## 工作原理
 
@@ -113,11 +130,15 @@ Downloads 顶层文件
 
 ```bash
 swift build            # 构建 Core、tt、TopicTidy
-swift test             # 66 项测试：扫描、提取、聚类、操作、自动化、GUI 契约
+swift test             # 75 项测试：扫描、提取、聚类、操作、自动化、GUI 与关于页
 .build/debug/tt benchmark            # 核心聚类基准（F1 门禁）
 .build/debug/tt benchmark Resources/fixtures/holdout_unseen.json
 scripts/build_app.sh   # 生成签名 .app 与 DMG
+scripts/package_cli.sh # 生成 CLI 压缩包
+scripts/publish_tap.sh --dry-run    # 渲染 Homebrew tap（不推送）
 ```
+
+发布：打 `v*` 标签即触发 `.github/workflows/release.yml`，它会跑测试与基准、构建 DMG 与 CLI 压缩包、生成 `SHA256SUMS.txt` 并创建 GitHub Release。
 
 测试与基准必须使用临时 Downloads 目录，绝不指向真实的 `~/Downloads`。
 

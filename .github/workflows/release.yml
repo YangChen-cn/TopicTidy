@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Toolchain
+        run: |
+          swift --version
+          version=$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9]*\.[0-9]*\).*/\1/p' | head -1)
+          awk -v v="$version" 'BEGIN { split(v, p, "."); if (p[1] < 6 || (p[1] == 6 && p[2] < 2)) exit 1 }' \
+            || { echo "::error::TopicTidyCore needs Swift 6.2 or newer (use a macOS 26 runner image)"; exit 1; }
+
+      - name: Check tag against source version
+        run: |
+          version=$(sed -n 's/.*static let version = "\(.*\)".*/\1/p' Sources/TopicTidyCore/Config/AppInfo.swift | head -1)
+          echo "source version: $version, tag: $GITHUB_REF_NAME"
+          [ "v$version" = "$GITHUB_REF_NAME" ] \
+            || { echo "::error::tag $GITHUB_REF_NAME does not match AppInfo.version $version"; exit 1; }
+
+      - name: Test
+        run: swift test
+
+      - name: Benchmark gates
+        run: |
+          swift build -c release
+          .build/release/tt benchmark --json --min-f1 1.0
+          .build/release/tt benchmark Resources/fixtures/holdout_unseen.json --json --min-f1 0.94
+
+      - name: Build app and DMG
+        run: scripts/build_app.sh
+
+      - name: Build CLI archive
+        run: scripts/package_cli.sh
+
+      - name: Checksums
+        run: |
+          cd dist
+          shasum -a 256 TopicTidy-*-arm64.dmg topictidy-cli-*-arm64.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Verify release assets
+        run: |
+          cd dist
+          [ ! -e python ] || { echo "::error::a Python runtime leaked into the build"; exit 1; }
+          tar -tzf topictidy-cli-*-arm64.tar.gz
+          dmg=$(ls TopicTidy-*-arm64.dmg)
+          hdiutil attach "$dmg" -nobrowse -mountpoint /tmp/topictidy-dmg > /dev/null
+          test -x "/tmp/topictidy-dmg/TopicTidy.app/Contents/MacOS/TopicTidy"
+          test -x "/tmp/topictidy-dmg/TopicTidy.app/Contents/Resources/tt"
+          if find /tmp/topictidy-dmg/TopicTidy.app -name 'python*' | grep -q .; then
+            echo "::error::bundle contains Python"; exit 1
+          fi
+          hdiutil detach /tmp/topictidy-dmg > /dev/null
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "TopicTidy $GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/TopicTidy-*-arm64.dmg \
+            dist/topictidy-cli-*-arm64.tar.gz \
+            dist/SHA256SUMS.txt

@@ -121,6 +121,64 @@ private func coursePlan(_ workspace: Workspace) throws -> Int {
     #expect(result.groups.first?.name == name)
 }
 
+@Test func restoringDismissedTopicWorksWithNoOpenPlan() async throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    for course in ["ELEC6008", "ELEC6103"] {
+        try workspace.put("\(course) Lecture 1.md", "one")
+        try workspace.put("\(course) Lecture 2.md", "two")
+    }
+    _ = try workspace.scan()
+    let planID = try workspace.proposePlan()
+    let service = AppService(base: workspace.settings)
+    let rows = try workspace.rows(
+        "SELECT topic_key,group_name FROM plan_members WHERE plan_id=? GROUP BY topic_key", [planID]
+    )
+    let dismissed = try #require(rows.first { $0["group_name"].string == "ELEC6103" })
+    let other = try #require(rows.first { $0["group_name"].string == "ELEC6008" })
+
+    var request = ServiceRequest()
+    request.action = "edit"
+    request.planID = planID
+    request.command = "dismiss-topic"
+    request.args = [dismissed["topic_key"].string]
+    #expect(await service.dispatch(request).ok)
+
+    // Finish the plan so no draft is left open, the way the GUI ends up after
+    // applying every pending topic.
+    let preview = await service.dispatch({
+        var value = ServiceRequest()
+        value.action = "preview"
+        value.planID = planID
+        value.topicKey = other["topic_key"].string
+        return value
+    }())
+    #expect(await service.dispatch({
+        var value = ServiceRequest()
+        value.action = "apply"
+        value.planID = planID
+        value.confirmed = true
+        value.moves = preview.moves
+        return value
+    }()).ok)
+
+    var status = ServiceRequest()
+    status.action = "status"
+    let snapshot = await service.dispatch(status)
+    #expect(snapshot.snapshot?.planID == nil)
+    #expect(snapshot.snapshot?.dismissed.map(\.name) == ["ELEC6103"])
+
+    request.planID = nil
+    request.command = "restore-dismissed"
+    request.args = ["ELEC6103"]
+    let restored = await service.dispatch(request)
+    #expect(restored.ok, "restore-dismissed must not require an open draft plan")
+    #expect(restored.snapshot?.dismissed.isEmpty == true)
+    status = ServiceRequest()
+    status.action = "status"
+    _ = await service.dispatch(status)
+}
+
 @Test func dismissedTopicIsReportedToTheClientUntilRestored() async throws {
     let workspace = try Workspace()
     defer { workspace.close() }

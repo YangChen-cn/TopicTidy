@@ -40,6 +40,7 @@ struct TT: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "tt",
         abstract: "本地、可解释、可撤销的 macOS Downloads 整理器",
+        version: AppInfo.version,
         subcommands: [
             Scan.self, Propose.self, Review.self, Apply.self, History.self, Undo.self,
             ConfigCommand.self, BenchmarkCommand.self, Semantic.self, Schedule.self,

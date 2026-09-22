@@ -8,8 +8,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-IDENTITY="TopicTidy"
-VERSION="0.9.0"
+# Version comes from the Swift source so the app, CLI and tap cannot drift.
+VERSION="$(sed -n 's/.*static let version = "\(.*\)".*/\1/p' \
+  "$ROOT/Sources/TopicTidyCore/Config/AppInfo.swift" | head -1)"
+IDENTITY=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --identity) IDENTITY="$2"; shift 2 ;;
@@ -17,6 +19,21 @@ while [ $# -gt 0 ]; do
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+# Prefer a valid TopicTidy identity, then any TopicTidy certificate still in the
+# keychain (the self-signed one is untrusted by Apple either way), then ad-hoc
+# for CI runners where no such certificate exists.
+if [ -z "$IDENTITY" ]; then
+  if security find-identity -v -p codesigning 2>/dev/null | grep -q '"TopicTidy"'; then
+    IDENTITY="TopicTidy"
+  elif security find-certificate -c "TopicTidy" > /dev/null 2>&1; then
+    IDENTITY="TopicTidy"
+    echo "note: TopicTidy certificate is not trusted by the system, signing anyway"
+  else
+    IDENTITY="-"
+    echo "note: no TopicTidy signing identity found, signing ad-hoc"
+  fi
+fi
+echo "==> version $VERSION, identity $IDENTITY"
 
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/topictidy-bundle-XXXXXX")"
 trap 'rm -rf "$STAGING"' EXIT

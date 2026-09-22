@@ -7,6 +7,7 @@ struct OrganizerView: View {
     @State private var showPreview = false
     @State private var previewMoves: [Move] = []
     @State private var showDismissed = false
+    @Environment(\.openWindow) private var openWindow
     private var groups: [TopicGroup] { TopicGroup.make(model.snapshot?.members ?? []) }
     private var dismissed: [DismissedGroup] { model.snapshot?.dismissed ?? [] }
     private var selectedDismissed: DismissedGroup? { dismissed.first { $0.id == selection } }
@@ -159,6 +160,8 @@ struct OrganizerView: View {
                 }
             }.disabled(model.busy || !(model.snapshot?.members.contains { $0.topic != nil && !$0.excluded } ?? false))
             SettingsLink { Label("设置", systemImage: "gearshape") }
+            Button("关于", systemImage: "info.circle") { openWindow(id: "about") }
+                .help("关于 TopicTidy")
         }
         .sheet(isPresented: $showPreview) { MovePreview(model: model, moves: previewMoves) { showPreview = false }.frame(width: 450) }
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {

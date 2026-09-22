@@ -49,6 +49,8 @@ struct PanelView: View {
                 Label("打开窗口", systemImage: "arrow.up.left.and.arrow.down.right")
             }.labelStyle(.iconOnly).buttonStyle(.borderless).help("打开完整窗口")
             Menu {
+                Button("关于 TopicTidy") { openWindow(id: "about"); NSApplication.shared.activate() }
+                Divider()
                 Button("退出 TopicTidy") { NSApplication.shared.terminate(nil) }
             } label: { Image(systemName: "ellipsis") }
                 .menuIndicator(.hidden).menuStyle(.borderlessButton).fixedSize()

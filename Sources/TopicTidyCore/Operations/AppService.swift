@@ -264,7 +264,10 @@ public actor AppService {
         var message: String?
         var moves: [SessionMove] = []
 
-        if ["edit", "preview", "apply"].contains(request.action) {
+        // Durable commands such as `restore-dismissed` must work with no plan
+        // open; everything else needs a live draft.
+        let planScoped = request.action != "edit" || request.command != "restore-dismissed"
+        if ["edit", "preview", "apply"].contains(request.action), planScoped {
             guard try planIsDraft(db, planID) else {
                 throw OrganizerError("方案已执行或不存在，请重新扫描生成建议")
             }
@@ -282,7 +285,7 @@ public actor AppService {
             message = text
         case "edit":
             guard let command = request.command else { throw OrganizerError("未知操作") }
-            message = try Operations.editPlan(db, planID ?? 0, command: command, args: request.args,
+            message = try Operations.editPlan(db, planID, command: command, args: request.args,
                                               organizedDir: settings.organizedDir)
         case "preview":
             var memberIDs: Set<Int>?

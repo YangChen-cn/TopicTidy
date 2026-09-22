@@ -350,9 +350,11 @@ public enum Operations {
     }
 
     @discardableResult
+    /// Plan-scoped commands require an open draft plan; `restore-dismissed` is
+    /// durable state and works even when no plan is open.
     public static func editPlan(
         _ db: Database,
-        _ planID: Int,
+        _ planID: Int?,
         command: String,
         args: [String],
         organizedDir: URL? = nil
@@ -363,6 +365,7 @@ public enum Operations {
 
         switch (command, args.count) {
         case ("dismiss-topic", 1), ("restore-topic", 1):
+            guard let planID else { throw OrganizerError("方案已执行或不存在，请重新扫描生成建议") }
             let excluding = command == "dismiss-topic"
             // Dismissal is durable: it must survive the next scan, so each
             // member also gets a `dismiss` correction that clustering honours.
@@ -408,13 +411,16 @@ public enum Operations {
             try db.connection.run(
                 "UPDATE corrections SET active=0 WHERE action='dismiss' AND active=1 AND topic_name=?", [name]
             )
-            try db.connection.run(
-                "UPDATE plan_members SET excluded=0 WHERE plan_id=? AND group_name=? AND applied=0",
-                [planID, name]
-            )
+            if let planID {
+                try db.connection.run(
+                    "UPDATE plan_members SET excluded=0 WHERE plan_id=? AND group_name=? AND applied=0",
+                    [planID, name]
+                )
+            }
             correctionTopic = name
             action = "主题 \(name) 已恢复，重新扫描后会再次提出"
         case ("rename", let count) where count >= 2:
+            guard let planID else { throw OrganizerError("方案已执行或不存在，请重新扫描生成建议") }
             let old = args[0]
             let new = try safeTopicName(args[1...].joined(separator: " "))
             let keys = try db.connection.query(
@@ -432,6 +438,7 @@ public enum Operations {
             }
             action = "主题 \(old) 已改名为 \(new)"
         case ("exclude", 1):
+            guard let planID else { throw OrganizerError("方案已执行或不存在，请重新扫描生成建议") }
             guard let row = try db.connection.query(
                 "SELECT source_fingerprint FROM plan_members WHERE plan_id=? AND id=?",
                 [planID, try intArgument(args[0])]
@@ -443,6 +450,7 @@ public enum Operations {
             )
             action = "成员 \(args[0]) 已排除"
         case ("move", let count) where count >= 2:
+            guard let planID else { throw OrganizerError("方案已执行或不存在，请重新扫描生成建议") }
             let topic = try safeTopicName(args[1...].joined(separator: " "))
             correctionTopic = topic
             guard let row = try db.connection.query(
@@ -460,6 +468,7 @@ public enum Operations {
             )
             action = "成员 \(args[0]) 已移至 \(topic)"
         case ("merge", let count) where count >= 2:
+            guard let planID else { throw OrganizerError("方案已执行或不存在，请重新扫描生成建议") }
             let target = try safeTopicName(args[args.count - 1])
             let row = try db.connection.query(
                 "SELECT topic_key FROM plan_members WHERE plan_id=? AND group_name=? AND topic_key IS NOT NULL LIMIT 1",
@@ -475,6 +484,7 @@ public enum Operations {
             }
             action = "已合并到 \(target)"
         case ("split", let count) where count >= 2:
+            guard let planID else { throw OrganizerError("方案已执行或不存在，请重新扫描生成建议") }
             let topic = try safeTopicName(args[1...].joined(separator: " "))
             correctionTopic = topic
             guard let row = try db.connection.query(
@@ -492,6 +502,7 @@ public enum Operations {
             )
             action = "成员 \(args[0]) 已拆分到 \(topic)"
         case ("folder", 2):
+            guard let planID else { throw OrganizerError("方案已执行或不存在，请重新扫描生成建议") }
             let folder = Paths.resolve(Paths.expand(args[1]))
             guard let organizedDir, within(folder, organizedDir) else {
                 throw OrganizerError("主题目录必须位于当前方案的整理根目录内")
