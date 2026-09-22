@@ -31,6 +31,9 @@ def test_launch_agent_enable_status_and_disable(workspace, tmp_path, monkeypatch
     enabled = scheduler.enable("07:30")
 
     assert enabled.enabled is True
+    assert enabled.state == "loaded"
+    assert enabled.configured is True
+    assert enabled.loaded is True
     assert enabled.time == "07:30"
     with plist_path.open("rb") as handle:
         payload = plistlib.load(handle)
@@ -40,6 +43,7 @@ def test_launch_agent_enable_status_and_disable(workspace, tmp_path, monkeypatch
 
     disabled = scheduler.disable()
     assert disabled.enabled is False
+    assert disabled.state == "not_configured"
     assert not plist_path.exists()
 
 
@@ -60,3 +64,29 @@ def test_launch_agent_removes_new_plist_when_bootstrap_fails(workspace, tmp_path
     with pytest.raises(RuntimeError, match="load failed"):
         scheduler.enable("07:30")
     assert not plist_path.exists()
+
+
+def test_launch_agent_status_distinguishes_configured_but_not_loaded(
+    workspace, tmp_path, monkeypatch,
+):
+    settings, _ = workspace
+    monkeypatch.setattr("downloads_organizer.scheduler.sys.platform", "darwin")
+    plist_path = tmp_path / "com.topictidy.daily.plist"
+    with plist_path.open("wb") as handle:
+        plistlib.dump({
+            "Label": "com.topictidy.daily",
+            "ProgramArguments": ["python", "-m", "downloads_organizer", "auto", "run"],
+            "StartCalendarInterval": {"Hour": 8, "Minute": 15},
+        }, handle)
+
+    def runner(command, **kwargs):
+        assert command[:2] == ["launchctl", "print"]
+        return SimpleNamespace(returncode=113, stdout="", stderr="Could not find service")
+
+    status = LaunchAgentScheduler(settings, plist_path=plist_path, runner=runner).status()
+
+    assert status.state == "configured_not_loaded"
+    assert status.configured is True
+    assert status.loaded is False
+    assert status.enabled is False
+    assert status.time == "08:15"

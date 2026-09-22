@@ -76,3 +76,87 @@ def test_auto_confirm_never_applies_group_with_conflict(workspace):
     assert result.batch_id is None
     assert result.eligible_topics == []
     assert (settings.downloads / "ELEC6008 Lecture 1.md").exists()
+
+
+def test_auto_confirm_rejects_topic_with_any_preexcluded_member(workspace):
+    settings, db = workspace
+    plan_id = _course_plan_for_auto_test(settings, db)
+    member = db.conn.execute(
+        "SELECT id FROM plan_members WHERE plan_id=? ORDER BY id LIMIT 1", (plan_id,)
+    ).fetchone()
+    db.conn.execute("UPDATE plan_members SET excluded=1 WHERE id=?", (member["id"],))
+    db.conn.commit()
+
+    result = auto_confirm_plan(db, settings, plan_id, 0.90)
+
+    assert result.batch_id is None
+    assert result.eligible_topics == []
+    assert all((settings.downloads / name).exists() for name in (
+        "ELEC6008 Lecture 1.md", "ELEC6008 Lecture 2.md",
+    ))
+
+
+def test_document_links_alone_never_auto_confirm_even_with_high_stored_confidence(workspace):
+    settings, db = workspace
+    put(settings.downloads, "README.md", """# Mixed downloads
+[Taxes](taxes.md)\n[Holiday](holiday.md)\n[Cooking](cooking.md)
+""")
+    put(settings.downloads, "taxes.md", "annual tax receipt")
+    put(settings.downloads, "holiday.md", "hotel itinerary")
+    put(settings.downloads, "cooking.md", "bread recipe")
+    scan(db, settings)
+    groups, unclassified = cluster(db, settings)
+    assert len(groups) == 1
+    assert not unclassified
+    assert any(item.kind == "document_links" for item in groups[0].evidence)
+    assert not any(
+        item.kind in {
+            "course_code", "series_identifier", "semantic_similarity",
+            "semantic_cross_language", "source_url",
+        } and item.strength == "strong"
+        for item in groups[0].evidence
+    )
+    plan_id = save_plan(db, settings, groups, unclassified)
+    db.conn.execute("UPDATE plan_members SET confidence=0.99 WHERE plan_id=?", (plan_id,))
+    db.conn.commit()
+
+    result = auto_confirm_plan(db, settings, plan_id, 0.92)
+
+    assert result.batch_id is None
+    assert result.eligible_topics == []
+    assert all((settings.downloads / name).exists() for name in (
+        "README.md", "taxes.md", "holiday.md", "cooking.md",
+    ))
+
+
+def test_document_links_with_independent_series_identifier_can_auto_confirm(workspace):
+    settings, db = workspace
+    put(settings.downloads, "README.md", """# Atlas42 Project Index
+[Design](Atlas42-design.md)\n[Tests](Atlas42-tests.md)\n[Release](Atlas42-release.md)
+""")
+    put(settings.downloads, "Atlas42-design.md", "# Atlas42 Design\nmechanical enclosure")
+    put(settings.downloads, "Atlas42-tests.md", "# Atlas42 Tests\nvalidation protocol")
+    put(settings.downloads, "Atlas42-release.md", "# Atlas42 Release\nshipping checklist")
+    scan(db, settings)
+    groups, unclassified = cluster(db, settings)
+    assert len(groups) == 1
+    assert not unclassified
+    assert groups[0].confidence >= 0.92
+    assert any(
+        item.kind == "series_identifier" and item.strength == "strong"
+        for item in groups[0].evidence
+    )
+    plan_id = save_plan(db, settings, groups, unclassified)
+
+    result = auto_confirm_plan(db, settings, plan_id, 0.92)
+
+    assert result.moved == 4
+    assert result.batch_id is not None
+
+
+def _course_plan_for_auto_test(settings, db):
+    put(settings.downloads, "ELEC6008 Lecture 1.md", "one")
+    put(settings.downloads, "ELEC6008 Lecture 2.md", "two")
+    scan(db, settings)
+    groups, unclassified = cluster(db, settings)
+    return save_plan(db, settings, groups, unclassified)

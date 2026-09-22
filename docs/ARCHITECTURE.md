@@ -10,7 +10,7 @@ SQLite 使用 WAL 和外键，当前 schema 版本为 5。`app_settings` 保存�
 
 PDF extractor 只访问采样页。少量页面全部读取；大型文档选择前三页、25%/50%/75% 代表页和最后两页。前部页面获得更高字符预算，同时为中部和尾部预留空间，总文本不超过 `max_chars`。
 
-分类顺序是：人工关联 → 强课程号种子 → 无标识文件谨慎附着课程 → Markdown 目录显式链接的有界集合 → 剩余文件 complete-link 聚类。文件名和来源中的课程样式标识允许较宽的项目代码；正文只接受学科前缀 allowlist，并排除 1900–2099 的年份，防止引用文本中的 `NOTES2021`、`HAVE1000` 等误建课程。课程号冲突会把 pair score 直接降为零。同域名只是弱证据。系列文件名使用 overlap 检测共同标识，标题只有包含数字或混合大小写的 identifier-like token 才作为系列锚点，普通 `machine learning` 等领域词组不能取得同等权重。Markdown 集合只使用索引文件直接指向当前顶层文件的链接，不通过中间文件传递扩张。其余 complete-link 仍要求两个组之间每一对文件都达到阈值，避免单个桥接文件把不一致的资料合并。每个结果分别报告课程代码、文件名、正文、原生语义、跨语言语义、来源 URL 的分数和 strong/weak/none 强度；显式目录集合额外报告 `document_links`。
+分类顺序是：人工关联 → 强课程号种子 → 无标识文件谨慎附着课程 → Markdown 目录显式链接的有界集合 → 剩余文件 complete-link 聚类。文件名和来源中的课程样式标识允许较宽的项目代码；正文只接受学科前缀 allowlist，并排除 1900–2099 的年份，防止引用文本中的 `NOTES2021`、`HAVE1000` 等误建课程。课程号冲突会把 pair score 直接降为零。同域名只是弱证据。系列文件名使用 overlap 检测共同标识；`report`、`project`、`notes` 等 generic token 被排除，只有至少两个共同有效 token 或共同 identifier-like token 才允许 overlap coefficient 放大。标题只有包含数字或混合大小写的 identifier-like token 才作为系列锚点，普通 `machine learning` 等领域词组不能取得同等权重。Markdown 集合只使用索引文件直接指向当前顶层文件的链接，不通过中间文件传递扩张。其余 complete-link 仍要求两个组之间每一对文件都达到阈值，避免单个桥接文件把不一致的资料合并。每个结果分别报告课程代码、文件名、正文、原生语义、跨语言语义、来源 URL 的分数和 strong/weak/none 强度；显式目录集合额外报告 `document_links`，共同系列标识报告 `series_identifier`。
 
 命名首先采用课程代码；否则优先使用共同系列标识，再从来源路径、文件名和文档标题中寻找在组内正文得到支持的连续短语，保留自然词序。README/索引集合可使用索引标题。它不会把高频关键词重新排序后拼成名称。无可靠短语时使用简洁标题或 `Related Documents`。只有 `source='manual'` 的主题名会覆盖重新生成的建议名；review rename 会把该名称标记为人工名称，同时保持 `topic_key` 不变。
 
@@ -18,8 +18,12 @@ PDF extractor 只访问采样页。少量页面全部读取；大型文档选择
 
 SQLite 事务无法与 APFS rename 构成共同原子操作。工具因此在移动前提交 `intent`，移动后立即写结果。下一次启动会检查未结束批次：目标存在且源消失时记为已移动，反之记为未开始，无法唯一判断时记为 ambiguous。撤销会重新计算 SHA-256，检查原路径空闲，再做同卷 rename；冲突只会跳过并报告。
 
+中断恢复会读取 `operation_batches.plan_id`、文件日志和对应 `plan_members`。对于 `apply` 与 `auto_apply`，若确认 rename 已完成，恢复同时更新 `files.path/status` 并按方案中的 `topic_key` 恢复 association；对于中断的 undo，则恢复 active 文件状态并停用 association。这样在 rename 后、SQLite 后续写入前崩溃也不会丢失学习关系。
+
 自定义整理目录通过 `PreferenceStore` 暴露给 CLI 和未来 GUI。每个方案固化生成时的根目录，预览、应用和撤销都使用该快照，避免设置变化改写旧方案。目标可以位于 Downloads 外，但必须是同一磁盘上的真实目录；文件名冲突仍使用确定性后缀且绝不覆盖。
 
-`DailyAutomationService` 是每日流程的应用层接口。自动确认默认关闭；显式启用后，它仍先持久化方案，只选择置信度达到阈值且无冲突的完整 topic，并以 `auto_apply` 批次执行。其余成员在该自动方案中排除且不移动。`LaunchAgentScheduler` 负责安装每天一次的用户级 plist，调用 `python -m downloads_organizer auto run`；它不负责分类或移动，也不触发网络访问。
+`DailyAutomationService` 是每日流程的应用层接口。自动确认默认关闭；显式启用后，它仍先持久化方案，只选择所有成员均未排除、置信度达到阈值且无冲突的完整 topic，并以 `auto_apply` 批次执行。如果 topic 使用强 `document_links`，还必须具备课程代码、系列标识、强语义或强来源 URL 中至少一类独立强证据。其余成员在该自动方案中排除且不移动。`LaunchAgentScheduler` 负责安装每天一次的用户级 plist，调用 `python -m downloads_organizer auto run`；状态查询通过 `launchctl print gui/<uid>/com.topictidy.daily` 验证实际载入状态，而不只检查 plist。它不负责分类或移动，也不触发网络访问。
+
+核心 benchmark 用于日常开发回归；独立 `holdout_unseen.json` 包含 42 个未参与原 50 文件优化的半真实样本，重点检查 generic filename、同领域不同项目、同域名无关来源、直接目录链接、跨语言主题、课程冲突和大量未分类文件。安全门禁优先检查 precision 与未分类集合，不用 holdout 继续调整原语料权重。
 
 首版的边界是：没有 OCR、没有递归目录扫描、没有云端模型、没有模型下载、没有模型训练。评分是用于排序和审阅的启发式信号，不是校准后的概率。

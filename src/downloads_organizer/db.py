@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -104,24 +105,60 @@ class Database:
         self.conn.close()
 
     def recover_interrupted(self) -> int:
-        rows = self.conn.execute("SELECT id FROM operation_batches WHERE status='running'").fetchall()
+        rows = self.conn.execute(
+            "SELECT id,plan_id,kind FROM operation_batches WHERE status='running'"
+        ).fetchall()
         for row in rows:
-            logs = self.conn.execute("SELECT * FROM operation_logs WHERE batch_id=? AND status='intent'", (row[0],)).fetchall()
+            logs = self.conn.execute(
+                "SELECT * FROM operation_logs WHERE batch_id=? AND status='intent'", (row["id"],)
+            ).fetchall()
             for log in logs:
                 src, dst = Path(log["source"]), Path(log["destination"])
                 if dst.exists() and not src.exists():
                     status, error = "moved", None
                     if log["file_id"]:
-                        self.conn.execute(
-                            "UPDATE files SET path=?,name=?,status='organized' WHERE id=?",
-                            (str(dst), dst.name, log["file_id"]),
-                        )
+                        if row["kind"] in {"apply", "auto_apply"}:
+                            self.conn.execute(
+                                "UPDATE files SET path=?,name=?,status='organized' WHERE id=?",
+                                (str(dst), dst.name, log["file_id"]),
+                            )
+                            member = self.conn.execute(
+                                """SELECT topic_key,source_fingerprint FROM plan_members
+                                WHERE plan_id=? AND file_id=? AND excluded=0 AND topic_key IS NOT NULL
+                                ORDER BY id DESC LIMIT 1""",
+                                (row["plan_id"], log["file_id"]),
+                            ).fetchone()
+                            if member and member["source_fingerprint"] == log["fingerprint"]:
+                                self.conn.execute(
+                                    """INSERT INTO associations(
+                                    topic_key,file_fingerprint,confirmed_at,active
+                                    ) VALUES(?,?,?,1)
+                                    ON CONFLICT(file_fingerprint) DO UPDATE SET
+                                    topic_key=excluded.topic_key,
+                                    confirmed_at=excluded.confirmed_at,active=1""",
+                                    (member["topic_key"], log["fingerprint"], time.time()),
+                                )
+                        elif row["kind"] == "undo":
+                            self.conn.execute(
+                                "UPDATE files SET path=?,name=?,status='active' WHERE id=?",
+                                (str(dst), dst.name, log["file_id"]),
+                            )
+                            self.conn.execute(
+                                "UPDATE associations SET active=0 WHERE file_fingerprint=?",
+                                (log["fingerprint"],),
+                            )
                 elif src.exists() and not dst.exists():
                     status, error = "not_started", "上次运行在移动前中断"
                 else:
                     status, error = "ambiguous", "源和目标状态无法自动判定"
-                self.conn.execute("UPDATE operation_logs SET status=?, error=? WHERE id=?", (status, error, log["id"]))
-            self.conn.execute("UPDATE operation_batches SET status='interrupted' WHERE id=?", (row[0],))
+                self.conn.execute(
+                    "UPDATE operation_logs SET status=?,error=?,completed_at=? WHERE id=?",
+                    (status, error, time.time(), log["id"]),
+                )
+            self.conn.execute(
+                "UPDATE operation_batches SET status='interrupted',completed_at=? WHERE id=?",
+                (time.time(), row["id"]),
+            )
         self.conn.commit()
         return len(rows)
 

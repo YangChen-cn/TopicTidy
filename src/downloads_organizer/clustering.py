@@ -24,6 +24,11 @@ from .text_features import document_reference_names, url_tokens, tokenize
 from .topic_naming import display_name, topic_key
 from .translation import TranslationBackend, ensure_pivot_embeddings
 
+AUTO_CONFIRM_SUPPORT_KINDS = frozenset({
+    "course_code", "series_identifier", "semantic_similarity",
+    "semantic_cross_language", "source_url",
+})
+
 
 @dataclass(frozen=True)
 class PairAssessment:
@@ -34,7 +39,11 @@ class PairAssessment:
 
 
 def _tokens(value: str) -> set[str]:
-    generic = {"pdf", "docx", "pptx", "txt", "markdown", "final", "copy", "download"}
+    generic = {
+        "pdf", "docx", "pptx", "txt", "markdown", "final", "copy", "download",
+        "report", "project", "notes", "note", "document", "presentation", "summary",
+        "overview", "results", "result", "draft",
+    }
     return {token for token in tokenize(value) if token not in generic}
 
 
@@ -46,7 +55,7 @@ def _overlap(left: set[str], right: set[str]) -> float:
     return len(left & right) / min(len(left), len(right)) if left and right else 0.0
 
 
-def _series_title_tokens(value: str) -> set[str]:
+def _identifier_like_tokens(value: str) -> set[str]:
     """Return identifier-like title tokens, such as FreeRTOS or CS229.
 
     Ordinary phrases like "machine learning" are intentionally excluded: they
@@ -58,6 +67,26 @@ def _series_title_tokens(value: str) -> set[str]:
         if any(char.isdigit() for char in token) or has_mixed_case:
             result.add(token.casefold())
     return result
+
+
+def _filename_similarity(left: str, right: str) -> float:
+    left_tokens, right_tokens = _tokens(left), _tokens(right)
+    score = _jaccard(left_tokens, right_tokens)
+    shared = left_tokens & right_tokens
+    identifiers = _identifier_like_tokens(left) & _identifier_like_tokens(right)
+    if len(shared) >= 2 or identifiers:
+        score = max(score, _overlap(left_tokens, right_tokens))
+    return score
+
+
+def _shared_series_identifiers(files: list[IndexedFile]) -> set[str]:
+    if not files:
+        return set()
+    identifiers = [
+        _identifier_like_tokens(file.path.stem) | _identifier_like_tokens(file.title)
+        for file in files
+    ]
+    return set.intersection(*identifiers) if identifiers else set()
 
 
 def _document_link_targets(file: IndexedFile, candidates: list[IndexedFile]) -> list[IndexedFile]:
@@ -155,13 +184,11 @@ def _time_gap(left: IndexedFile, right: IndexedFile) -> float:
 
 
 def assess_pair(left: IndexedFile, right: IndexedFile) -> PairAssessment:
-    left_filename = _tokens(left.path.stem)
-    right_filename = _tokens(right.path.stem)
-    filename = max(_jaccard(left_filename, right_filename), _overlap(left_filename, right_filename))
+    filename = _filename_similarity(left.path.stem, right.path.stem)
     left_content = set(left.keywords) | _tokens(" ".join((left.title, left.summary[:600])))
     right_content = set(right.keywords) | _tokens(" ".join((right.title, right.summary[:600])))
     content = _jaccard(left_content, right_content)
-    if _series_title_tokens(left.title) & _series_title_tokens(right.title):
+    if _identifier_like_tokens(left.title) & _identifier_like_tokens(right.title):
         content = max(content, 0.50)
     same_native_space = bool(left.vector_space and left.vector_space == right.vector_space)
     semantic = _cosine(left.vector, right.vector) if same_native_space else 0.0
@@ -451,6 +478,12 @@ def _new_group(files: list[IndexedFile], *, course_code: str = "") -> ProposedGr
                 "course_code", "weak", 0.5,
                 f"组内部分文件发现课程代码 {naming_course}",
             )
+    identifiers = sorted(_shared_series_identifiers(files))
+    if identifiers:
+        evidence.insert(1, Evidence(
+            "series_identifier", "strong", 1.0,
+            f"共同系列标识 {identifiers[0]}",
+        ))
     name = display_name(files, naming_course)
     return ProposedGroup(topic_key(files, naming_course), name, confidence, files, evidence, conflicts)
 
@@ -620,11 +653,19 @@ def cluster(
         group = _new_group(members)
         if hub.title and hub.path.stem.casefold() in {"readme", "index", "contents", "toc"}:
             group.display_name = hub.title.strip()[:80]
-        group.confidence = max(group.confidence, 0.92)
         group.evidence.insert(0, Evidence(
             "document_links", "strong", 1.0,
             f"{hub.name} 明确链接组内 {len(members) - 1} 个文件",
         ))
+        independent_strong = any(
+            item.kind in AUTO_CONFIRM_SUPPORT_KINDS
+            and item.strength == "strong"
+            for item in group.evidence
+        )
+        if independent_strong:
+            group.confidence = max(group.confidence, 0.92)
+        else:
+            group.confidence = min(group.confidence, 0.91)
         groups.append(group)
         assigned.update(member.id for member in members)
 

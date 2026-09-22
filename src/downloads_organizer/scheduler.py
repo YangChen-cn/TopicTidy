@@ -15,14 +15,22 @@ LAUNCH_AGENT_LABEL = "com.topictidy.daily"
 
 @dataclass(frozen=True)
 class ScheduleStatus:
-    enabled: bool
+    state: str
+    configured: bool
+    loaded: bool
     time: str | None
     plist_path: Path
     command: list[str]
 
+    @property
+    def enabled(self) -> bool:
+        """Compatibility alias: enabled means launchd has actually loaded it."""
+        return self.loaded
+
     def as_dict(self) -> dict[str, object]:
         result = asdict(self)
         result["plist_path"] = str(self.plist_path)
+        result["enabled"] = self.enabled
         return result
 
 
@@ -59,16 +67,37 @@ class LaunchAgentScheduler:
 
     def status(self) -> ScheduleStatus:
         if not self.plist_path.exists():
-            return ScheduleStatus(False, None, self.plist_path, self.command)
+            return ScheduleStatus(
+                "not_configured", False, False, None, self.plist_path, self.command,
+            )
+        at = None
+        command = self.command
         try:
             with self.plist_path.open("rb") as handle:
                 payload = plistlib.load(handle)
             interval = payload.get("StartCalendarInterval", {})
             at = f"{int(interval['Hour']):02d}:{int(interval['Minute']):02d}"
             command = [str(item) for item in payload.get("ProgramArguments", self.command)]
-            return ScheduleStatus(True, at, self.plist_path, command)
         except (OSError, KeyError, TypeError, ValueError, plistlib.InvalidFileException):
-            return ScheduleStatus(False, None, self.plist_path, self.command)
+            pass
+        loaded = False
+        if sys.platform == "darwin":
+            domain = f"gui/{os.getuid()}"
+            result = self.runner(
+                ["launchctl", "print", f"{domain}/{LAUNCH_AGENT_LABEL}"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            loaded = result.returncode == 0
+        return ScheduleStatus(
+            "loaded" if loaded else "configured_not_loaded",
+            True,
+            loaded,
+            at,
+            self.plist_path,
+            command,
+        )
 
     def enable(self, at: str) -> ScheduleStatus:
         if sys.platform != "darwin":

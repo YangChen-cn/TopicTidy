@@ -70,7 +70,7 @@ tt config show
 
 目标根目录会写入方案快照，因此修改设置不会改变已经保存的旧方案。目录不能直接等于 Downloads，也不能是符号链接；当前版本仍使用同卷 rename，跨磁盘目标会在执行时安全跳过。
 
-高置信度自动确认默认关闭。启用后，每日任务只自动执行达到阈值且无冲突的完整分组；低分组、未分类文件和过期文件保持原位。置信度是启发式评分，建议先使用默认 `0.92`：
+高置信度自动确认默认关闭。启用后，每日任务只自动执行达到阈值、无冲突、且没有任何成员被排除的完整分组；低分组、部分排除的分组、未分类文件和过期文件保持原位。README/index 的直接链接可以生成建议，但只有课程代码、系列标识、强语义或强来源 URL 中至少另一类独立强证据同时成立时，才允许自动移动。置信度是启发式评分，建议先使用默认 `0.92`：
 
 ```bash
 tt config auto-confirm --enable --threshold 0.92
@@ -95,7 +95,7 @@ tt schedule status
 tt schedule disable
 ```
 
-每日任务始终执行扫描。只有另外启用了 `auto-confirm` 时，它才会生成方案并自动移动高置信度分组。LaunchAgent 调用当前虚拟环境的 Python；删除或移动该虚拟环境后需要重新执行 `schedule enable`。日志位于应用数据目录的 `logs/`。
+`schedule status` 同时检查 plist 配置和 `launchctl print`，区分 `not_configured`、`configured_not_loaded` 与 `loaded`。每日任务始终执行扫描。只有另外启用了 `auto-confirm` 时，它才会生成方案并自动移动高置信度分组。LaunchAgent 调用当前虚拟环境的 Python；删除或移动该虚拟环境后需要重新执行 `schedule enable`。日志位于应用数据目录的 `logs/`。
 
 ## 数据与配置
 
@@ -124,7 +124,10 @@ benchmark 使用内置标注 fixture，输出 expected clusters、predicted clus
 ```bash
 tt benchmark path/to/fixture.json --min-f1 0.95
 tt benchmark --json
+tt benchmark src/downloads_organizer/fixtures/holdout_unseen.json --min-f1 0.94
 ```
+
+独立 holdout 包含 42 个半真实文件，覆盖通用 `report/project/notes` 文件名、同领域不同项目、同域名无关下载、README 集合、中英文相似主题、相近但冲突的课程号，以及 20 个应保持未分类的文件。它与核心 benchmark 分开维护，不用于继续调整现有 50 文件语料的权重。
 
 测试全部使用 pytest 临时目录，不会访问真实 Downloads。`examples/demo-downloads` 提供可复制的演示资料：
 

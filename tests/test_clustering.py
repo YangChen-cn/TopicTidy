@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from downloads_organizer.clustering import cluster
+from downloads_organizer.clustering import assess_pair, cluster, load_index
 from downloads_organizer.scanner import scan
 
 from conftest import put
@@ -170,4 +170,21 @@ def test_markdown_index_links_form_a_bounded_collection(workspace):
         "README.md", "01-processes.md", "02-files.md", "03-signals.md",
     }
     assert groups[0].evidence[0].kind == "document_links"
+    assert groups[0].confidence < 0.92
     assert [file.name for file in unclassified] == ["unrelated.md"]
+
+
+def test_generic_single_filename_token_does_not_get_overlap_score_of_one(workspace):
+    settings, db = workspace
+    put(settings.downloads, "report.md", "annual tax filing receipt")
+    put(settings.downloads, "final-report-energy.md", "solar inverter performance")
+    scan(db, settings)
+    left, right = load_index(db)
+
+    assessment = assess_pair(left, right)
+    filename = next(item for item in assessment.evidence if item.kind == "filename_similarity")
+
+    assert filename.score < 0.50
+    groups, unclassified = cluster(db, settings)
+    assert not groups
+    assert len(unclassified) == 2

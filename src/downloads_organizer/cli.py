@@ -115,11 +115,15 @@ def schedule_status(json_output: bool = typer.Option(False, "--json")) -> None:
         status = LaunchAgentScheduler(settings).status()
         if json_output:
             typer.echo(json.dumps(status.as_dict(), ensure_ascii=False, indent=2))
-        elif status.enabled:
+        elif status.state == "loaded":
             console.print(f"每日自动扫描：已启用，每天 {status.time}")
             console.print(f"LaunchAgent：{status.plist_path}")
+        elif status.state == "configured_not_loaded":
+            suffix = f"，计划时间 {status.time}" if status.time else ""
+            console.print(f"每日自动扫描：已配置但未载入 launchd{suffix}")
+            console.print(f"LaunchAgent：{status.plist_path}")
         else:
-            console.print("每日自动扫描：未启用")
+            console.print("每日自动扫描：未配置")
     finally:
         db.close()
 

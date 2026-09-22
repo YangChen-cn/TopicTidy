@@ -26,11 +26,13 @@ The CLI and user-facing explanations are Chinese by default. Source code, identi
 
 - Never scan recursively, follow symlinks, overwrite an existing file, or move a file without an explicit saved plan and user confirmation.
 - Persisted auto-confirm enablement is explicit ongoing confirmation. It may move only complete conflict-free groups at or above the configured threshold, after saving a plan and durable intent; it must remain off by default.
+- Auto-confirm must reject an entire topic when any member is excluded. Strong `document_links` requires a second independent strong course, series identifier, semantic, cross-language semantic, or source signal before automatic movement.
 - A plan must retain its destination root. Changing the current preference must never retarget an existing plan or break undo for an earlier batch.
 - Tests and benchmarks must use temporary Downloads directories. Never point automated validation at the real `~/Downloads`.
 - PDF extraction must not read every page of a large document. Preserve front pages, representative middle pages, and tail pages within `max_chars`.
 - An unchanged size/mtime does not make an extraction cache valid by itself. Scanner cache hits must also match the file fingerprint and current extractor cache version.
 - Course-code conflicts are hard negative evidence. A shared source domain alone must never create a cluster.
+- Generic filename tokens such as report, project, and notes must not receive overlap-coefficient amplification by themselves.
 - Proposed groups expose structured evidence for course code, filename, content, native semantic similarity, cross-language semantic similarity, and source URL, each marked `strong`, `weak`, or `none`.
 - Native vectors from different language spaces must never be compared. Persist and check `native_embedding_space`; cross-language comparison requires two cached English pivot vectors and distinct `semantic_cross_language` evidence.
 - Translation is propose-time fallback for plausible cross-language candidates. Never run translation during scan or for every indexed file.
@@ -38,6 +40,7 @@ The CLI and user-facing explanations are Chinese by default. Source code, identi
 - `topic_key` is durable identity; `display_name` is editable presentation. Rename operations must preserve `topic_key`.
 - Confidence values are heuristic scores, not calibrated probabilities.
 - The project is still pre-user. Do not add backward database migrations yet. Change the current schema and bump `SCHEMA_VERSION`; incompatible local test databases may be deleted and rebuilt.
+- Interrupted apply/auto-apply recovery must restore both file state and the plan's topic association after a completed rename.
 
 ## Development
 

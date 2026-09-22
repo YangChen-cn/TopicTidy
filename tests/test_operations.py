@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from dataclasses import replace
+
+import pytest
 
 from downloads_organizer.clustering import cluster, save_plan
 from downloads_organizer.operations import apply_plan, edit_plan, preview_moves, undo_batch
@@ -130,3 +133,50 @@ def test_plan_keeps_custom_destination_after_setting_changes(workspace, tmp_path
 
     _, undone = undo_batch(db, changed_settings, batch_id)
     assert all(item["status"] == "undone" for item in undone)
+
+
+@pytest.mark.parametrize("operation_kind", ["apply", "auto_apply"])
+def test_recovery_restores_topic_association_after_crash_immediately_after_rename(
+    workspace, monkeypatch, operation_kind,
+):
+    settings, db = workspace
+    plan_id = _course_plan(settings, db)
+    real_rename = os.rename
+
+    class SimulatedCrash(BaseException):
+        pass
+
+    def rename_then_crash(source, destination):
+        real_rename(source, destination)
+        raise SimulatedCrash
+
+    monkeypatch.setattr("downloads_organizer.operations.os.rename", rename_then_crash)
+    with pytest.raises(SimulatedCrash):
+        apply_plan(db, settings, plan_id, operation_kind=operation_kind)
+
+    batch = db.conn.execute(
+        "SELECT id,status,kind FROM operation_batches ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    log = db.conn.execute(
+        "SELECT * FROM operation_logs WHERE batch_id=? ORDER BY id LIMIT 1", (batch["id"],)
+    ).fetchone()
+    member = db.conn.execute(
+        "SELECT topic_key FROM plan_members WHERE plan_id=? AND file_id=?",
+        (plan_id, log["file_id"]),
+    ).fetchone()
+    assert batch["status"] == "running"
+    assert batch["kind"] == operation_kind
+    assert db.conn.execute("SELECT COUNT(*) FROM associations").fetchone()[0] == 0
+
+    assert db.recover_interrupted() == 1
+
+    recovered = db.conn.execute(
+        "SELECT path,status FROM files WHERE id=?", (log["file_id"],)
+    ).fetchone()
+    association = db.conn.execute(
+        "SELECT topic_key,active FROM associations WHERE file_fingerprint=?", (log["fingerprint"],)
+    ).fetchone()
+    assert recovered["path"] == log["destination"]
+    assert recovered["status"] == "organized"
+    assert association["topic_key"] == member["topic_key"]
+    assert association["active"] == 1

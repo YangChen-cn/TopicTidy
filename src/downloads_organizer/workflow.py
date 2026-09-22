@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .clustering import cluster, save_plan
+from .clustering import AUTO_CONFIRM_SUPPORT_KINDS, cluster, save_plan
 from .config import Settings
 from .db import Database, dumps, loads
 from .embedding import NativeMacOSEncoder, SemanticEncoder
@@ -78,20 +78,37 @@ def auto_confirm_plan(
 ) -> AutoConfirmResult:
     """Confirm and apply only complete, conflict-free groups above the threshold."""
     rows = db.conn.execute(
-        """SELECT topic_key,group_name,confidence,conflicts
-        FROM plan_members WHERE plan_id=? AND group_name IS NOT NULL AND excluded=0""",
+        """SELECT topic_key,group_name,confidence,conflicts,evidence,excluded
+        FROM plan_members WHERE plan_id=? AND group_name IS NOT NULL""",
         (plan_id,),
     ).fetchall()
     grouped: dict[str, list] = {}
     for row in rows:
         if row["topic_key"]:
             grouped.setdefault(str(row["topic_key"]), []).append(row)
-    eligible_keys = {
-        key
-        for key, members in grouped.items()
-        if min(float(member["confidence"]) for member in members) >= threshold
-        and all(not loads(member["conflicts"], []) for member in members)
-    }
+    eligible_keys = set()
+    for key, members in grouped.items():
+        complete = all(not bool(member["excluded"]) for member in members)
+        conflict_free = all(not loads(member["conflicts"], []) for member in members)
+        confident = min(float(member["confidence"]) for member in members) >= threshold
+        evidence = [
+            item
+            for member in members
+            for item in loads(member["evidence"], [])
+            if isinstance(item, dict)
+        ]
+        uses_document_links = any(
+            item.get("kind") == "document_links" and item.get("strength") == "strong"
+            for item in evidence
+        )
+        independent_strong = any(
+            item.get("kind") in AUTO_CONFIRM_SUPPORT_KINDS
+            and item.get("strength") == "strong"
+            for item in evidence
+        )
+        document_links_safe = not uses_document_links or independent_strong
+        if complete and conflict_free and confident and document_links_safe:
+            eligible_keys.add(key)
     eligible_topics = sorted({
         str(member["group_name"])
         for key, members in grouped.items()
