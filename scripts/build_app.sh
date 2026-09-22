@@ -5,6 +5,10 @@
 # `tt` ships inside the bundle because the daily LaunchAgent invokes it.
 #
 # Usage: scripts/build_app.sh [--identity NAME] [--version X.Y.Z]
+#                            [--skip-build] [--bin-dir DIR]
+#
+# --skip-build reuses binaries that are already compiled (CI builds them once);
+# --bin-dir points at them explicitly. Without either flag the script builds.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,36 +16,41 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(sed -n 's/.*static let version = "\(.*\)".*/\1/p' \
   "$ROOT/Sources/TopicTidyCore/Config/AppInfo.swift" | head -1)"
 IDENTITY=""
+BIN_DIR=""
+SKIP_BUILD=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --identity) IDENTITY="$2"; shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
+    --skip-build) SKIP_BUILD=1; shift ;;
+    --bin-dir) BIN_DIR="$2"; SKIP_BUILD=1; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-# Prefer a valid TopicTidy identity, then any TopicTidy certificate still in the
-# keychain (the self-signed one is untrusted by Apple either way), then ad-hoc
-# for CI runners where no such certificate exists.
-if [ -z "$IDENTITY" ]; then
-  if security find-identity -v -p codesigning 2>/dev/null | grep -q '"TopicTidy"'; then
-    IDENTITY="TopicTidy"
-  elif security find-certificate -c "TopicTidy" > /dev/null 2>&1; then
-    IDENTITY="TopicTidy"
-    echo "note: TopicTidy certificate is not trusted by the system, signing anyway"
-  else
-    IDENTITY="-"
-    echo "note: no TopicTidy signing identity found, signing ad-hoc"
-  fi
+# shellcheck source=scripts/lib/identity.sh
+. "$ROOT/scripts/lib/identity.sh"
+REQUESTED_IDENTITY="$IDENTITY"
+IDENTITY="$(resolve_signing_identity "$REQUESTED_IDENTITY")"
+if [ "$IDENTITY" = "-" ]; then
+  echo "note: no TopicTidy certificate in this keychain, signing ad-hoc"
 fi
 echo "==> version $VERSION, identity $IDENTITY"
 
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/topictidy-bundle-XXXXXX")"
 trap 'rm -rf "$STAGING"' EXIT
 
-echo "==> building release binaries"
-MACOSX_DEPLOYMENT_TARGET=15.0 swift build -c release --package-path "$ROOT" \
-  -Xswiftc -debug-prefix-map -Xswiftc "$ROOT=."
-BIN="$(swift build -c release --package-path "$ROOT" --show-bin-path)"
+if [ "$SKIP_BUILD" = 1 ]; then
+  echo "==> reusing release binaries"
+  BIN="${BIN_DIR:-$(swift build -c release --package-path "$ROOT" --show-bin-path)}"
+else
+  echo "==> building release binaries"
+  MACOSX_DEPLOYMENT_TARGET=15.0 swift build -c release --package-path "$ROOT" \
+    -Xswiftc -debug-prefix-map -Xswiftc "$ROOT=."
+  BIN="$(swift build -c release --package-path "$ROOT" --show-bin-path)"
+fi
+for binary in TopicTidy tt; do
+  [ -x "$BIN/$binary" ] || { echo "missing $BIN/$binary; build first or drop --skip-build" >&2; exit 1; }
+done
 
 APP="$STAGING/TopicTidy.app"
 CONTENTS="$APP/Contents"

@@ -49,4 +49,8 @@ GUI 的 `AppModel` 直接调用 `AppService`（actor），不再启动子进程�
 
 `TopicTidy.app` 只包含 `Contents/MacOS/TopicTidy`、`Contents/Resources/tt` 和图标，没有 Python、没有 helper、没有资源 bundle——两个 benchmark fixture 以 Swift 字面量内嵌，因此应用可任意搬迁。`scripts/build_app.sh` 负责 release 构建、图标生成、bundle 卫生检查（禁止出现 `python`/`*.py`/构建机路径）、逐项签名、DMG 与大小报告；`scripts/package_cli.sh` 单独打包 `tt` 加 LICENSE/README；`scripts/publish_tap.sh` 用发布产物的 SHA-256 渲染并推送 Homebrew tap。`tt` 与 GUI 共享同一个 `TopicTidyCore`，不存在两套实现。
 
-版本只在 `AppInfo.version` 里写一次：构建脚本、`tt --version`、Info.plist 和 Homebrew tap 都从它派生，release workflow 在打标签时会校验 tag 与它一致。发布流程是 `.github/workflows/release.yml`：push `v*` 标签 → 跑测试与基准 → 构建 DMG 与 CLI 压缩包 → 生成 `SHA256SUMS.txt` → 创建 GitHub Release。`install.sh` 从该 Release 取件、校验 SHA-256 后安装到 `~/.local/bin/tt`。
+版本只在 `AppInfo.version` 里写一次：构建脚本、`tt --version`、Info.plist 和 Homebrew tap 都从它派生，release workflow 在打标签时会校验 tag 与它一致。签名身份由 `scripts/lib/identity.sh` 统一解析：显式 `--identity` → keychain 里的 `TopicTidy` 证书（CI 从 secrets 导入）→ ad-hoc。
+
+发布流程是 `.github/workflows/release.yml`：push `v*` 标签 → 校验 tag 与版本 → 导入证书 → `swift test` → **唯一一次** release 编译 → 基准门禁 → `build_app.sh --skip-build` 与 `package_cli.sh --skip-build` 复用同一份二进制 → 生成 Release Notes 与 `SHA256SUMS.txt` → 校验产物 → 创建 GitHub Release。`tests.yml` 只在分支推送与 PR 上运行，忽略 `v*` 标签，避免一次发布跑两套相同测试。
+
+Homebrew tap（`YangChen-cn/homebrew-tap`）提供两个 cask：`topictidy` 装应用并把包内 `tt` 链接出来，`topictidy-cli` 只链接预编译的 `tt`——用 cask 而非 formula，是因为 formula 会让 Homebrew 要求可用的 Xcode/CLT 工具链。`scripts/publish_tap.sh` 下载**已发布**产物并锁定其 SHA-256（本地构建字节不同，不能用来生成 tap）。`install.sh` 从 Release 取件、校验 SHA-256 后安装到 `~/.local/bin/tt`，不经过 Homebrew，因此也没有隔离标记。

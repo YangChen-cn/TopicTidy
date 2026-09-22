@@ -2,6 +2,10 @@ name: Tests
 
 on:
   push:
+    branches: ["**"]
+    # Release tags are handled by release.yml, which runs this same suite
+    # before publishing; never start two identical runs for one tag.
+    tags-ignore: ["v*"]
   pull_request:
 
 jobs:

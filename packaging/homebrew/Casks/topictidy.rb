@@ -29,9 +29,9 @@ cask "topictidy" do
 
       xattr -dr com.apple.quarantine /Applications/TopicTidy.app
 
-    只需要命令行、且没有这个提示的安装方式：
+    只需要命令行时：
 
-      brew install YangChen-cn/tap/topictidy-cli
+      brew install --cask YangChen-cn/tap/topictidy-cli
   EOS
 
   zap trash: [

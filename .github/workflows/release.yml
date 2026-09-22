@@ -13,6 +13,11 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Release notes diff against the previous tag, so the checkout needs
+          # the full history and every tag.
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Toolchain
         run: |
@@ -28,20 +33,52 @@ jobs:
           [ "v$version" = "$GITHUB_REF_NAME" ] \
             || { echo "::error::tag $GITHUB_REF_NAME does not match AppInfo.version $version"; exit 1; }
 
+      # The self-signed TopicTidy certificate lives in repository secrets; the
+      # packaging scripts pick it up automatically and fall back to ad-hoc
+      # signing when it is absent (forks, local runs).
+      - name: Import signing certificate
+        env:
+          CERTIFICATE_P12: ${{ secrets.CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$CERTIFICATE_P12" ]; then
+            echo "::warning::no signing certificate configured, builds will be ad-hoc signed"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/topictidy.keychain-db"
+          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p actions "$keychain"
+          security set-keychain-settings -lut 900 "$keychain"
+          security unlock-keychain -p actions "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k actions "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning || true
+
       - name: Test
         run: swift test
 
+      # The only release build. Everything after this reuses these binaries.
+      - name: Build release binaries
+        run: swift build -c release -Xswiftc -debug-prefix-map -Xswiftc "$PWD=."
+
       - name: Benchmark gates
         run: |
-          swift build -c release
           .build/release/tt benchmark --json --min-f1 1.0
           .build/release/tt benchmark Resources/fixtures/holdout_unseen.json --json --min-f1 0.94
 
       - name: Build app and DMG
-        run: scripts/build_app.sh
+        run: scripts/build_app.sh --skip-build
 
       - name: Build CLI archive
-        run: scripts/package_cli.sh
+        run: scripts/package_cli.sh --skip-build
+
+      - name: Release notes
+        run: |
+          mkdir -p dist
+          scripts/generate_release_notes.sh "$GITHUB_REF_NAME" > dist/RELEASE_NOTES.md
+          cat dist/RELEASE_NOTES.md
 
       - name: Checksums
         run: |
@@ -52,6 +89,7 @@ jobs:
       - name: Verify release assets
         run: |
           cd dist
+          codesign -dv --verbose=2 TopicTidy.app 2>&1 | grep -E "Authority|Signature=" || true
           [ ! -e python ] || { echo "::error::a Python runtime leaked into the build"; exit 1; }
           tar -tzf topictidy-cli-*-arm64.tar.gz
           dmg=$(ls TopicTidy-*-arm64.dmg)
@@ -69,7 +107,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "TopicTidy $GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file dist/RELEASE_NOTES.md \
             dist/TopicTidy-*-arm64.dmg \
             dist/topictidy-cli-*-arm64.tar.gz \
             dist/SHA256SUMS.txt

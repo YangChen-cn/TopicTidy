@@ -41,16 +41,22 @@ GUI + CLI：安装菜单栏应用，并把应用内的 `tt` 暴露到终端。
 brew install --cask YangChen-cn/tap/topictidy
 ```
 
-只装命令行（原生二进制，不受 Gatekeeper 未验证提示影响）：
+只装命令行（预编译 arm64 二进制，不需要 Xcode、Swift、CLT 或 Python）：
 
 ```bash
-brew install YangChen-cn/tap/topictidy-cli
+brew install --cask YangChen-cn/tap/topictidy-cli
 ```
 
-> Cask 分发的应用使用自签名证书、未经 Apple 公证，首次启动时系统会提示“未验证”，
-> 在“系统设置 → 隐私与安全性”中允许即可。`tt` 来自同一个包，因此也会带上隔离标记：
-> 被系统终止时执行一次 `xattr -dr com.apple.quarantine /Applications/TopicTidy.app`。
-> Formula 与 `install.sh` 走的是独立二进制包，没有这一步。
+> 两个 Cask 分发的都是自签名、未经 Apple 公证的产物，Homebrew 下载后会带上隔离标记。
+> 应用首次启动时系统会提示“未验证”，在“系统设置 → 隐私与安全性”中允许即可；
+> `tt` 被系统终止时（`Killed: 9`，exit 137）执行一次：
+>
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/TopicTidy.app     # 应用内的 tt
+> xattr -dr com.apple.quarantine "$(brew --prefix)/Caskroom/topictidy-cli"   # 独立 CLI
+> ```
+>
+> 下面的 `install.sh` 直接用 curl 取件，没有这一步。
 
 ### 一键安装脚本（仅 CLI）
 
@@ -140,10 +146,12 @@ swift test             # 75 项测试：扫描、提取、聚类、操作、自�
 .build/debug/tt benchmark Resources/fixtures/holdout_unseen.json
 scripts/build_app.sh   # 生成签名 .app 与 DMG
 scripts/package_cli.sh # 生成 CLI 压缩包
+scripts/package_cli.sh --skip-build # 复用已编译的 tt 打包 CLI
+scripts/generate_release_notes.sh   # 生成 Release Notes（tag 区间 commit）
 scripts/publish_tap.sh --dry-run    # 渲染 Homebrew tap（不推送）
 ```
 
-发布：打 `v*` 标签即触发 `.github/workflows/release.yml`，它会跑测试与基准、构建 DMG 与 CLI 压缩包、生成 `SHA256SUMS.txt` 并创建 GitHub Release。
+发布：打 `v*` 标签即触发 `.github/workflows/release.yml`——导入签名证书、跑测试与基准、**只编译一次** release 二进制（App 与 CLI 复用）、生成 Release Notes 与 `SHA256SUMS.txt`，最后创建 GitHub Release。普通分支推送只触发 `tests.yml`，`v*` 标签不会再重复跑一遍 Tests。
 
 测试与基准必须使用临时 Downloads 目录，绝不指向真实的 `~/Downloads`。
 

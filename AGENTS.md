@@ -54,9 +54,14 @@ The clustering rules, thresholds, evidence wording, and naming logic were migrat
 ## Release Pipeline
 
 - `AppInfo.version` (in `Sources/TopicTidyCore/Config/AppInfo.swift`) is the only version literal. `scripts/build_app.sh` reads it for the bundle, `tt --version` reports it, and the release workflow refuses to publish when the pushed tag does not match.
-- Pushing a `v*` tag runs `.github/workflows/release.yml`: toolchain check, `swift test`, benchmark gates, `scripts/build_app.sh`, `scripts/package_cli.sh`, `SHA256SUMS.txt`, then a GitHub Release with the DMG, the CLI archive and the checksums. No Python distribution is published any more.
+- `tests.yml` runs for every branch push and pull request but ignores `v*` tags; `release.yml` owns tags, so a release never starts a second, identical test run.
+- Pushing a `v*` tag runs `.github/workflows/release.yml`: toolchain check, tag/version check, certificate import, `swift test`, **one** `swift build -c release`, benchmark gates, `scripts/build_app.sh --skip-build`, `scripts/package_cli.sh --skip-build`, release notes, `SHA256SUMS.txt`, asset verification, then a GitHub Release. No Python distribution is published any more.
+- The release build happens exactly once per tag. Both packaging scripts accept `--skip-build`/`--bin-dir`; keep it that way rather than letting each step rebuild.
+- Release notes come from `scripts/generate_release_notes.sh`, which diffs the tag against the previous version tag. Do not fall back to `--generate-notes`: this project commits to main without pull requests, so GitHub can only produce a changelog link.
+- Signing identity resolution lives in `scripts/lib/identity.sh`: `--identity`, then the `TopicTidy` certificate (imported in CI from the `CERTIFICATE_P12`/`CERTIFICATE_PASSWORD` secrets), then ad-hoc. Never commit the certificate; it must stay in repository secrets.
 - `install.sh` is the user-facing CLI installer: macOS + arm64 only, latest release by default, SHA-256 verified against `SHA256SUMS.txt`, installed to `~/.local/bin/tt` via write-and-rename, with a PATH hint. It accepts `TOPICTIDY_API_BASE`/`TOPICTIDY_DOWNLOAD_BASE` overrides so it can be tested against a local mock before a release exists.
-- The Homebrew tap is `YangChen-cn/homebrew-tap`, prepared from `packaging/homebrew/` by `scripts/publish_tap.sh`. Never open pull requests against Homebrew's official repositories from CI.
+- The Homebrew tap is `YangChen-cn/homebrew-tap`, prepared from `packaging/homebrew/` by `scripts/publish_tap.sh`. Both products are **casks**: the CLI ships a prebuilt arm64 binary, and a formula would make Homebrew demand a working Xcode/CLT toolchain that CLI users do not have. Never open pull requests against Homebrew's official repositories from CI.
+- `publish_tap.sh` pins the hashes of the artefacts GitHub actually published (it downloads them); local builds differ byte-for-byte and must not be used.
 - CI runs on a macOS 26 runner image; `macos-15` ships Swift 6.1 and cannot build the package.
 
 ## Development

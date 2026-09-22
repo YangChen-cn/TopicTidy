@@ -63,21 +63,21 @@ echo "==> version $VERSION"
 echo "    dmg sha256 $DMG_SHA"
 echo "    cli sha256 $CLI_SHA"
 
-mkdir -p "$STAGING/tap/Casks" "$STAGING/tap/Formula"
+mkdir -p "$STAGING/tap/Casks"
 sed -e "s/__VERSION__/$VERSION/g" -e "s/__SHA256_DMG__/$DMG_SHA/g" \
   "$ROOT/packaging/homebrew/Casks/topictidy.rb" > "$STAGING/tap/Casks/topictidy.rb"
 sed -e "s/__VERSION__/$VERSION/g" -e "s/__SHA256_CLI__/$CLI_SHA/g" \
-  "$ROOT/packaging/homebrew/Formula/topictidy-cli.rb" > "$STAGING/tap/Formula/topictidy-cli.rb"
+  "$ROOT/packaging/homebrew/Casks/topictidy-cli.rb" > "$STAGING/tap/Casks/topictidy-cli.rb"
 
 if command -v ruby > /dev/null 2>&1; then
   ruby -c "$STAGING/tap/Casks/topictidy.rb" > /dev/null
-  ruby -c "$STAGING/tap/Formula/topictidy-cli.rb" > /dev/null
+  ruby -c "$STAGING/tap/Casks/topictidy-cli.rb" > /dev/null
   echo "==> ruby syntax ok"
 fi
 
 if [ "$DRY_RUN" = 1 ]; then
   echo "==> rendered tap (dry run)"
-  for file in "$STAGING/tap/Casks/topictidy.rb" "$STAGING/tap/Formula/topictidy-cli.rb"; do
+  for file in "$STAGING/tap/Casks/topictidy.rb" "$STAGING/tap/Casks/topictidy-cli.rb"; do
     echo "----- ${file#"$STAGING/tap"/} -----"
     grep -vE '^\s*#' "$file" | grep -vE '^\s*$' | head -12
   done
@@ -98,16 +98,23 @@ if ! git clone --quiet "https://github.com/$TAP_REPOSITORY.git" "$WORK" 2>/dev/n
   git clone --quiet "https://github.com/$TAP_REPOSITORY.git" "$WORK"
 fi
 
-mkdir -p "$WORK/Casks" "$WORK/Formula"
+mkdir -p "$WORK/Casks"
 cp "$STAGING/tap/Casks/topictidy.rb" "$WORK/Casks/topictidy.rb"
-cp "$STAGING/tap/Formula/topictidy-cli.rb" "$WORK/Formula/topictidy-cli.rb"
+cp "$STAGING/tap/Casks/topictidy-cli.rb" "$WORK/Casks/topictidy-cli.rb"
+
+# The CLI used to be a formula; a formula would make Homebrew demand a working
+# Xcode/CLT toolchain for a prebuilt binary, so it moved to a cask.
+if [ -f "$WORK/Formula/topictidy-cli.rb" ]; then
+  git -C "$WORK" rm -q -f Formula/topictidy-cli.rb
+  rmdir "$WORK/Formula" 2>/dev/null || true
+fi
 
 if [ -z "$(git -C "$WORK" status --porcelain)" ]; then
   echo "==> tap already up to date"
   exit 0
 fi
 
-git -C "$WORK" add Casks/topictidy.rb Formula/topictidy-cli.rb
+git -C "$WORK" add -A
 git -C "$WORK" -c user.name="$(git config user.name || echo TopicTidy)" \
   -c user.email="$(git config user.email || echo noreply@github.com)" \
   commit --quiet -m "TopicTidy ${VERSION}"
