@@ -5,7 +5,7 @@
 # `tt` ships inside the bundle because the daily LaunchAgent invokes it.
 #
 # Usage: scripts/build_app.sh [--identity NAME] [--version X.Y.Z]
-#                            [--skip-build] [--bin-dir DIR]
+#                            [--skip-build] [--bin-dir DIR] [--app-only]
 #
 # --skip-build reuses binaries that are already compiled (CI builds them once);
 # --bin-dir points at them explicitly. Without either flag the script builds.
@@ -18,11 +18,13 @@ VERSION="$(sed -n 's/.*static let version = "\(.*\)".*/\1/p' \
 IDENTITY=""
 BIN_DIR=""
 SKIP_BUILD=0
+APP_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --identity) IDENTITY="$2"; shift 2 ;;
     --version) VERSION="$2"; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --app-only) APP_ONLY=1; shift ;;
     --bin-dir) BIN_DIR="$2"; SKIP_BUILD=1; shift 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -132,6 +134,11 @@ DIST="$ROOT/dist"
 mkdir -p "$DIST"
 rm -rf "$DIST/TopicTidy.app"
 cp -R "$APP" "$DIST/TopicTidy.app"
+
+if [ "$APP_ONLY" = 1 ]; then
+  echo "APP: $DIST/TopicTidy.app"
+  exit 0
+fi
 
 DMG_ROOT="$STAGING/dmg-root"
 mkdir -p "$DMG_ROOT"

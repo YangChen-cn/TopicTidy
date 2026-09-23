@@ -53,6 +53,8 @@ The clustering rules, thresholds, evidence wording, and naming logic were migrat
 
 ## Release Pipeline
 
+- Release is opt-in. Only a current, explicit user request to “发新版本” authorizes a version bump, release tag, GitHub Release, Homebrew tap update, or other public distribution. Earlier general requests to push code or create a repository do not authorize a later release. Never infer release approval from passing tests or a finished fix.
+- For ordinary GUI changes, build the app locally and open that newly built `.app` for the user's manual acceptance. Do not package a DMG or push a release tag by default. Keep GitHub Actions as the packaging path when the user explicitly requests a release.
 - `AppInfo.version` (in `Sources/TopicTidyCore/Config/AppInfo.swift`) is the only version literal. `scripts/build_app.sh` reads it for the bundle, `tt --version` reports it, and the release workflow refuses to publish when the pushed tag does not match.
 - `tests.yml` runs for every branch push and pull request but ignores `v*` tags; `release.yml` owns tags, so a release never starts a second, identical test run.
 - Pushing a `v*` tag runs `.github/workflows/release.yml`: toolchain check, tag/version check, certificate import, `swift test`, **one** `swift build -c release`, benchmark gates, `scripts/build_app.sh --skip-build`, `scripts/package_cli.sh --skip-build`, release notes, `SHA256SUMS.txt`, asset verification, then a GitHub Release. No Python distribution is published any more.
@@ -72,7 +74,8 @@ The clustering rules, thresholds, evidence wording, and naming logic were migrat
 swift build
 swift test
 swift build -c release && .build/release/tt benchmark --json
-scripts/build_app.sh                    # signed .app + DMG + size report
+scripts/build_app.sh --app-only         # local signed .app for manual GUI acceptance
+scripts/build_app.sh                    # .app + DMG, only when distribution is requested
 ```
 
 Before committing, require:
