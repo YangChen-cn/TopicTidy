@@ -1,67 +1,75 @@
 {
- "pairwise_f1": 1.0,
- "pairwise_precision": 1.0,
- "pairwise_recall": 1.0,
- "predicted_clusters": {
-  "ATLAS42": [
-   "Atlas42-design.md",
-   "Atlas42-release.md",
-   "Atlas42-tests.md",
-   "README-Atlas42.md"
-  ],
-  "COMP4101": [
-   "01 Assignment Brief.md",
-   "COMP4101 Lecture 01 Graph Search.md",
-   "COMP4101 Lecture 02 Heuristics.md"
-  ],
-  "COMP4102": [
-   "02 Assignment Brief.md",
-   "COMP4102 Lecture 01 Graph Search.md",
-   "COMP4102 Lecture 02 Heuristics.md"
-  ],
-  "ECON5001": [
-   "ECON5001 Project Overview.md",
-   "ECON5001 Project Results.md"
-  ],
-  "ECON5002": [
-   "ECON5002 Project Overview.md",
-   "ECON5002 Project Results.md"
-  ],
-  "Harbor Sensor Field Report": [
-   "Harbor Sensor Field Report revised.docx",
-   "Harbor Sensor Field Report v1.pdf"
-  ],
-  "Personal Reference Index": [
-   "budget.md",
-   "index.md",
-   "recipe.md",
-   "travel.md"
-  ],
-  "电池储能安全指南": [
-   "Battery Storage Safety.md",
-   "电池储能安全指南.md"
+  "pairwise_f1": 1,
+  "pairwise_precision": 1,
+  "pairwise_recall": 1,
+  "predicted_clusters": {
+    "ATLAS42": [
+      "Atlas42-design.md",
+      "Atlas42-release.md",
+      "Atlas42-tests.md",
+      "README-Atlas42.md"
+    ],
+    "COMP4101": [
+      "01 Assignment Brief.md",
+      "COMP4101 Lecture 01 Graph Search.md",
+      "COMP4101 Lecture 02 Heuristics.md"
+    ],
+    "COMP4102": [
+      "02 Assignment Brief.md",
+      "COMP4102 Lecture 01 Graph Search.md",
+      "COMP4102 Lecture 02 Heuristics.md"
+    ],
+    "ECON5001": [
+      "ECON5001 Project Overview.md",
+      "ECON5001 Project Results.md"
+    ],
+    "ECON5002": [
+      "ECON5002 Project Overview.md",
+      "ECON5002 Project Results.md"
+    ],
+    "Example Sensor": [
+      "Device Provisioning.md",
+      "Sensor Field Guide.md"
+    ],
+    "Harbor Sensor Field Report": [
+      "Harbor Sensor Field Report revised.docx",
+      "Harbor Sensor Field Report v1.pdf"
+    ],
+    "Personal Reference Index": [
+      "budget.md",
+      "index.md",
+      "recipe.md",
+      "travel.md"
+    ],
+    "电池储能安全指南": [
+      "Battery Storage Safety.md",
+      "电池储能安全指南.md"
+    ]
+  },
+  "predicted_unclassified": [
+    "AlphaGrid solar forecast.md",
+    "BetaFarm solar forecast.md",
+    "IMG_2048.jpg",
+    "Kitchen Brief.md",
+    "Transit Brief.md",
+    "Workshop Equipment.md",
+    "archive.zip",
+    "boarding-pass.pdf",
+    "cafeteria-menu.pdf",
+    "cooking-recipes.md",
+    "dorm-booking.pdf",
+    "final-report-energy.md",
+    "installer.dmg",
+    "invoice.pdf",
+    "meeting-minutes.md",
+    "notes-bayesian-statistics.md",
+    "notes.md",
+    "project-ocean-cleanup.md",
+    "project.md",
+    "random.json",
+    "report.md",
+    "resume.docx",
+    "tax-statement.pdf",
+    "烘焙配方.md"
   ]
- },
- "predicted_unclassified": [
-  "AlphaGrid solar forecast.md",
-  "BetaFarm solar forecast.md",
-  "IMG_2048.jpg",
-  "archive.zip",
-  "boarding-pass.pdf",
-  "cafeteria-menu.pdf",
-  "cooking-recipes.md",
-  "dorm-booking.pdf",
-  "final-report-energy.md",
-  "installer.dmg",
-  "invoice.pdf",
-  "meeting-minutes.md",
-  "notes-bayesian-statistics.md",
-  "notes.md",
-  "project-ocean-cleanup.md",
-  "project.md",
-  "random.json",
-  "report.md",
-  "resume.docx",
-  "tax-statement.pdf"
- ]
 }

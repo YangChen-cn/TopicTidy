@@ -49,6 +49,20 @@ public protocol TranslationBackend: AnyObject {
 public final class NativeTranslationBackend: TranslationBackend, @unchecked Sendable {
     public init() {}
 
+    /// Translation may resume on the main actor even when the caller starts
+    /// a detached task. Pump that run loop while a synchronous CLI caller waits.
+    private static func awaitResult(_ semaphore: DispatchSemaphore, seconds: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        if !Thread.isMainThread {
+            return semaphore.wait(timeout: .now() + seconds) == .success
+        }
+        while Date() < deadline {
+            if semaphore.wait(timeout: .now()) == .success { return true }
+            _ = RunLoop.current.run(mode: .default, before: min(Date().addingTimeInterval(0.05), deadline))
+        }
+        return semaphore.wait(timeout: .now()) == .success
+    }
+
     public var version: String {
         "apple-translation:\(SystemVersion.release):native"
     }
@@ -70,7 +84,10 @@ public final class NativeTranslationBackend: TranslationBackend, @unchecked Send
         let unique = Self.uniqued(pairs)
         let result = SendableBox<[LanguagePair: String]>([:])
         let semaphore = DispatchSemaphore(value: 0)
-        Task {
+        // A plain Task can inherit the caller's actor. The CLI calls this on
+        // its main thread and blocks below, so inherited main-actor work would
+        // never start. Keep the Apple request on an independent executor.
+        Task.detached {
             let availability = LanguageAvailability()
             for pair in unique {
                 let status = await availability.status(
@@ -81,7 +98,9 @@ public final class NativeTranslationBackend: TranslationBackend, @unchecked Send
             }
             semaphore.signal()
         }
-        semaphore.wait()
+        guard Self.awaitResult(semaphore, seconds: 15) else {
+            throw SemanticEncodingError("Apple Translation 语言状态查询超时")
+        }
         return result.value
     }
 
@@ -95,7 +114,7 @@ public final class NativeTranslationBackend: TranslationBackend, @unchecked Send
         let semaphore = DispatchSemaphore(value: 0)
         let translations = SendableBox<[String]?>(nil)
         let failure = SendableBox<String?>(nil)
-        Task {
+        Task.detached {
             let availability = LanguageAvailability()
             let status = await availability.status(from: sourceLanguage, to: targetLanguage)
             guard status == .installed else {
@@ -117,7 +136,9 @@ public final class NativeTranslationBackend: TranslationBackend, @unchecked Send
             }
             semaphore.signal()
         }
-        semaphore.wait()
+        guard Self.awaitResult(semaphore, seconds: 45) else {
+            throw SemanticEncodingError("Apple Translation 翻译超时")
+        }
         if let message = failure.value { throw SemanticEncodingError(message) }
         guard let values = translations.value, values.count == texts.count else {
             throw SemanticEncodingError("Apple Translation 返回了无效翻译结果")

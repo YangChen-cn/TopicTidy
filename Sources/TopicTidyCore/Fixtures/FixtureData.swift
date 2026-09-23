@@ -115,6 +115,13 @@ public enum FixtureData {
     {"name": "ECON5002 Project Overview.md", "content": "Panel data estimation and labour market outcomes."},
     {"name": "ECON5002 Project Results.md", "content": "Panel data estimates and labour market robustness checks."},
 
+    {"name": "Sensor Field Guide.md", "content": "Telemetry probe calibration and sampling units.", "vector": [0.9, 0.1, 0.0, 0.0], "source_urls": ["https://raw.githubusercontent.com/example/sensor-course/main/lessons/README.md"]},
+    {"name": "Device Provisioning.md", "content": "Device identity enrollment and gateway setup.", "vector": [0.9, 0.1, 0.0, 0.0], "source_urls": ["https://raw.githubusercontent.com/example/sensor-course/main/setup/README.md"]},
+    {"name": "Transit Brief.md", "content": "Rail timetable planning and passenger connections.", "vector": [0.9, 0.1, 0.0, 0.0], "source_urls": ["https://raw.githubusercontent.com/example/transit-course/main/lessons/README.md"]},
+    {"name": "Kitchen Brief.md", "content": "Oven preparation and seasonal meal service.", "vector": [0.9, 0.1, 0.0, 0.0], "source_urls": ["https://raw.githubusercontent.com/example/kitchen-course/main/lessons/README.md"]},
+    {"name": "Workshop Equipment.md", "content": "Metal cutting machine maintenance and workshop inventory.", "native_space": "en", "pivot_vector": [1.0, 0.0, 0.0, 0.0]},
+    {"name": "烘焙配方.md", "content": "面包烘焙配方与烤箱温度记录。", "native_space": "zh-Hans", "pivot_vector": [0.89, 0.4559605, 0.0, 0.0], "translated_content": "Bread baking recipe and oven temperature records."},
+
     {"name": "report.md", "content": "annual personal tax filing receipt"},
     {"name": "final-report-energy.md", "content": "solar inverter efficiency and power quality measurements"},
     {"name": "project.md", "content": "community theatre volunteer schedule"},
@@ -147,10 +154,15 @@ public enum FixtureData {
     "Cross-language Battery Safety": ["Battery Storage Safety.md", "电池储能安全指南.md"],
     "Personal Reference Index": ["index.md", "budget.md", "travel.md", "recipe.md"],
     "ECON5001": ["ECON5001 Project Overview.md", "ECON5001 Project Results.md"],
-    "ECON5002": ["ECON5002 Project Overview.md", "ECON5002 Project Results.md"]
+    "ECON5002": ["ECON5002 Project Overview.md", "ECON5002 Project Results.md"],
+    "Sensor Course": ["Sensor Field Guide.md", "Device Provisioning.md"]
   },
   "expected_unclassified": [
     "report.md",
+    "Transit Brief.md",
+    "Kitchen Brief.md",
+    "Workshop Equipment.md",
+    "烘焙配方.md",
     "final-report-energy.md",
     "project.md",
     "project-ocean-cleanup.md",

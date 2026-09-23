@@ -66,11 +66,11 @@ brew install --cask YangChen-cn/tap/topictidy-cli
 curl -fsSL https://raw.githubusercontent.com/YangChen-cn/TopicTidy/main/install.sh | sh
 ```
 
-可用 `TOPICTIDY_VERSION=0.10.1` 指定版本，`TOPICTIDY_INSTALL_DIR` 指定安装目录。
+可用 `TOPICTIDY_VERSION=0.10.2` 指定版本，`TOPICTIDY_INSTALL_DIR` 指定安装目录。
 
 ### DMG
 
-1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-0.10.1-arm64.dmg`。
+1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-0.10.2-arm64.dmg`。
 2. 打开 DMG，把 TopicTidy 拖入 Applications。
 3. 启动后点击菜单栏托盘图标。
 
@@ -161,3 +161,4 @@ scripts/publish_tap.sh --dry-run    # 渲染 Homebrew tap（不推送）
 - [docs/MIGRATION.md](docs/MIGRATION.md) — Python → Swift 迁移的等价性证据与实测对比
 - [docs/HOLDOUT_EVALUATION.md](docs/HOLDOUT_EVALUATION.md) — 留出语料评估
 - [docs/REAL_WORLD_EVALUATION.md](docs/REAL_WORLD_EVALUATION.md) — 真实语料评估
+- [docs/REAL_WORLD_110_EVALUATION.md](docs/REAL_WORLD_110_EVALUATION.md) — 扩充到 110 文件后的 Swift 复测

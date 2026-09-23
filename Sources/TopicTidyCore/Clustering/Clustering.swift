@@ -166,6 +166,20 @@ enum ClusterMath {
     }
 
     static func sourceScore(_ left: IndexedFile, _ right: IndexedFile, cache: ClusterCache) -> (Double, String) {
+        // GitHub and its raw-content host serve unrelated repositories under
+        // one domain. Shared words such as README, main, microsoft and lessons
+        // must not make two different repositories look like one source.
+        let leftRepositories = githubRepositories(left.sourceURLs)
+        let rightRepositories = githubRepositories(right.sourceURLs)
+        if !leftRepositories.isEmpty && !rightRepositories.isEmpty {
+            if leftRepositories.isDisjoint(with: rightRepositories) {
+                return (0.15, "仅共享 GitHub 托管站点；仓库不同")
+            }
+            let shared = leftRepositories.intersection(rightRepositories).sorted(by: Py.less)
+            let pathSimilarity = jaccard(cache.urlTokens(left), cache.urlTokens(right))
+            return (max(0.60, min(1.0, pathSimilarity + 0.15)),
+                    "共同 GitHub 仓库 \(shared[0])")
+        }
         let pathSimilarity = jaccard(cache.urlTokens(left), cache.urlTokens(right))
         let sharedDomains = cache.domains(left).intersection(cache.domains(right)).sorted(by: Py.less)
         let domainBonus = sharedDomains.isEmpty ? 0.0 : 0.15
@@ -179,6 +193,19 @@ enum ClusterMath {
             detail = "没有共同下载来源证据"
         }
         return (score, detail)
+    }
+
+    static func githubRepositories(_ urls: [String]) -> Set<String> {
+        var result: Set<String> = []
+        for url in urls {
+            let parsed = PyURL.parse(url)
+            let host = Py.lower(parsed.netloc).split(separator: ":", maxSplits: 1).first.map(String.init) ?? ""
+            guard host == "github.com" || host == "raw.githubusercontent.com" else { continue }
+            let parts = parsed.path.split(separator: "/")
+            guard parts.count >= 2 else { continue }
+            result.insert("\(Py.lower(String(parts[0])))/\(Py.lower(String(parts[1])))")
+        }
+        return result
     }
 
     static func primaryCourse(_ file: IndexedFile) -> String {
@@ -319,16 +346,29 @@ func assessPair(_ left: IndexedFile, _ right: IndexedFile, cache: ClusterCache) 
         return PairAssessment(total: 0.0, metrics: metrics, evidence: evidence, conflicts: conflicts)
     }
 
+    let leftRepositories = ClusterMath.githubRepositories(left.sourceURLs)
+    let rightRepositories = ClusterMath.githubRepositories(right.sourceURLs)
+    if sharedCourse.isEmpty && !leftRepositories.isEmpty && !rightRepositories.isEmpty
+        && leftRepositories.isDisjoint(with: rightRepositories) {
+        conflicts.append("来源 GitHub 仓库不同")
+        return PairAssessment(total: 0.0, metrics: metrics, evidence: evidence, conflicts: conflicts)
+    }
+
     var score = filename * 0.32 + source * 0.13 + content * 0.25 + semanticForScore * 0.30
     if !sharedCourse.isEmpty { score = max(score, 0.96) }
-    if semanticForScore >= 0.82 && content >= 0.20 { score = max(score, 0.68) }
-    if semanticForScore >= 0.60 && content >= 0.25 { score = max(score, 0.65) }
-    if semanticForScore >= 0.82 && filename >= 0.50 { score = max(score, 0.68) }
+    // Native and translated vectors have different error profiles. A broad
+    // translated AI/ML description can resemble an unrelated course chapter;
+    // require either very strong pivot agreement or an independent filename
+    // or source clue before a cross-language match creates a group.
+    if sameNativeSpace && semantic >= 0.82 && content >= 0.20 { score = max(score, 0.68) }
+    if sameNativeSpace && semantic >= 0.60 && content >= 0.25 { score = max(score, 0.65) }
+    if sameNativeSpace && semantic >= 0.82 && filename >= 0.50 { score = max(score, 0.68) }
     if filename >= 0.50 && source >= 0.50 { score = max(score, 0.68) }
-    if semanticForScore >= 0.78 && source >= 0.50 { score = max(score, 0.68) }
+    if sameNativeSpace && semantic >= 0.78 && source >= 0.50 { score = max(score, 0.68) }
     if crossSemantic >= 0.92 {
         score = max(score, 0.65)
-    } else if crossSemantic >= 0.88 && ClusterMath.timeGap(left, right) <= AppDefaults.crossLanguageTimeWindowSeconds {
+    } else if crossSemantic >= 0.88 && (filename >= 0.15 || source >= 0.50)
+                && ClusterMath.timeGap(left, right) <= AppDefaults.crossLanguageTimeWindowSeconds {
         score = max(score, 0.65)
     }
     return PairAssessment(total: score, metrics: metrics, evidence: evidence, conflicts: conflicts)

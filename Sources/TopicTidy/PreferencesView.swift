@@ -42,8 +42,32 @@ struct PreferencesView: View {
                         Spacer()
                         Button("保存自动整理") {
                             if automatic { confirmAutomatic = true }
-                            else { Task { await saveAutomatic() } }
+                            else { Task { _ = await saveAutomatic() } }
                         }
+                    }
+                    if confirmAutomatic {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("允许今后自动移动文件？")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("这是一项持续授权。每日任务会移动符合条件的完整主题，并保留撤销记录。")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            HStack {
+                                Spacer()
+                                Button("取消") {
+                                    confirmAutomatic = false
+                                    automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
+                                }
+                                Button("启用自动整理") {
+                                    Task {
+                                        if await saveAutomatic() { confirmAutomatic = false }
+                                    }
+                                }.buttonStyle(.borderedProminent)
+                            }
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
                     }
                 }
                 Divider()
@@ -61,7 +85,7 @@ struct PreferencesView: View {
                             Task { await model.perform("schedule", values: ["enabled": daily, "at": at]) }
                         }
                     }
-                    Text("\(daily ? "按本机时间执行。" : "")启用自动整理后，每日扫描也会移动符合条件的文件。")
+                    Text("\(daily ? "按本机时间执行。" : "")启用自动整理后，每日扫描也会移动符合条件的文件。后台任务使用 TopicTidy 内置的 tt。")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }.padding(16)
@@ -77,9 +101,6 @@ struct PreferencesView: View {
                 at = s.schedule.time ?? "09:00"
             }
         }
-        .confirmationDialog("允许今后自动移动文件？", isPresented: $confirmAutomatic) {
-            Button("启用自动整理") { Task { await saveAutomatic() } }
-        } message: { Text("这是一项持续授权。每日任务会移动符合条件的完整主题，并保留撤销记录。") }
     }
 
     private func sectionTitle(_ text: String, icon: String) -> some View {
@@ -99,7 +120,7 @@ struct PreferencesView: View {
         panel.canCreateDirectories = true
         if panel.runModal() == .OK, let url = panel.url { destination = url.path }
     }
-    private func saveAutomatic() async {
+    private func saveAutomatic() async -> Bool {
         await model.perform("preferences", values: ["enabled": automatic, "threshold": threshold])
     }
 }
