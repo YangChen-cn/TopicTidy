@@ -31,6 +31,7 @@ struct Batch: Identifiable, Sendable {
 }
 
 struct Preferences: Sendable {
+    var scan_roots: [String]
     var destination: String
     var auto_confirm_enabled: Bool
     var auto_confirm_threshold: Double

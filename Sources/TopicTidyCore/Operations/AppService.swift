@@ -131,6 +131,7 @@ public struct ServiceRequest: Sendable {
     public var confirmed = false
     public var moves: [SessionMove] = []
     public var destination: String?
+    public var scanRoots: [String]?
     public var enabled: Bool?
     public var threshold: Double?
     public var at: String?
@@ -332,6 +333,9 @@ public actor AppService {
             text += results.filter { !$0.error.isEmpty }.map { "；" + $0.error }.joined()
             message = text
         case "preferences":
+            if let scanRoots = request.scanRoots {
+                try store.setScanRoots(scanRoots.map { URL(fileURLWithPath: Paths.expand($0)) })
+            }
             if let destination = request.destination {
                 try store.setDestination(URL(fileURLWithPath: Paths.expand(destination)))
             }

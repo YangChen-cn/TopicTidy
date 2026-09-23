@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PreferencesView: View {
     @Bindable var model: AppModel
+    @State private var scanRoots: [String] = []
     @State private var destination = ""
     @State private var automatic = false
     @State private var threshold = 0.92
@@ -13,10 +14,39 @@ struct PreferencesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        sectionTitle("扫描文件夹", icon: "folder.badge.questionmark")
+                        Spacer()
+                        Button("添加…", action: addScanRoots)
+                    }
+                    ForEach(scanRoots, id: \.self) { path in
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder").foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(URL(fileURLWithPath: path).lastPathComponent).lineLimit(1)
+                                Text(path).font(.caption2).foregroundStyle(.secondary)
+                                    .lineLimit(1).truncationMode(.middle)
+                            }
+                            Spacer(minLength: 4)
+                            Button {
+                                Task { await saveScanRoots(scanRoots.filter { $0 != path }) }
+                            } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("移除扫描文件夹 \(path)")
+                            .disabled(scanRoots.count <= 1)
+                        }
+                    }
+                    Text("只扫描顶层文件。更改目录后自动整理会关闭，需重新启用。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
                     sectionTitle("整理位置", icon: "folder")
                     TextField("目标文件夹路径", text: $destination).textFieldStyle(.roundedBorder)
                     HStack {
-                        Text("新方案使用此位置").font(.caption).foregroundStyle(.secondary)
+                        Text("所有扫描目录共用此整理位置").font(.caption).foregroundStyle(.secondary)
                         Spacer()
                         Button("选择…", action: chooseFolder)
                         Button("保存") { Task { await model.perform("preferences", values: ["destination": destination]) } }
@@ -94,6 +124,7 @@ struct PreferencesView: View {
         .task {
             await model.perform("status")
             if let s = model.snapshot {
+                scanRoots = s.preferences.scan_roots
                 destination = s.preferences.destination
                 automatic = s.preferences.auto_confirm_enabled
                 threshold = s.preferences.auto_confirm_threshold
@@ -119,6 +150,22 @@ struct PreferencesView: View {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         if panel.runModal() == .OK, let url = panel.url { destination = url.path }
+    }
+    private func addScanRoots() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK {
+            Task { await saveScanRoots(scanRoots + panel.urls.map(\.path)) }
+        }
+    }
+    private func saveScanRoots(_ paths: [String]) async {
+        if await model.perform("preferences", values: ["scan_roots": paths]) {
+            scanRoots = model.snapshot?.preferences.scan_roots ?? paths
+            automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
+            confirmAutomatic = false
+        }
     }
     private func saveAutomatic() async -> Bool {
         await model.perform("preferences", values: ["enabled": automatic, "threshold": threshold])

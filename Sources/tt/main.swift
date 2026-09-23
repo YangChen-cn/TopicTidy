@@ -52,7 +52,7 @@ struct TT: ParsableCommand {
 // MARK: - scan
 
 struct Scan: ParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "扫描 Downloads 顶层并更新本地索引。")
+    static let configuration = CommandConfiguration(abstract: "扫描已配置文件夹的顶层并更新本地索引。")
 
     func run() throws {
         let context = try Context.open()
@@ -328,8 +328,8 @@ struct Undo: ParsableCommand {
 struct ConfigCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "config",
-        abstract: "管理整理目录和自动确认设置",
-        subcommands: [ConfigShow.self, ConfigDestination.self, ConfigAutoConfirm.self]
+        abstract: "管理扫描目录、整理目录和自动确认设置",
+        subcommands: [ConfigShow.self, ConfigSources.self, ConfigDestination.self, ConfigAutoConfirm.self]
     )
 
     struct ConfigShow: ParsableCommand {
@@ -345,12 +345,65 @@ struct ConfigCommand: ParsableCommand {
             if json {
                 outputJSON(payload)
             } else {
+                output("扫描目录：")
+                for root in (payload["scan_roots"] as? [String] ?? []) { output("  \(root)") }
                 output("整理目录：\(payload["destination"] as? String ?? "")")
                 let enabled = (payload["auto_confirm_enabled"] as? Bool) ?? false
                 output("高置信度自动确认：\(enabled ? "已启用" : "已停用")")
                 let threshold = (payload["auto_confirm_threshold"] as? Double) ?? 0
                 output(String(format: "自动确认阈值：%.2f（启发式）", threshold))
             }
+        }
+    }
+
+    struct ConfigSources: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "sources", abstract: "管理要扫描的文件夹；默认只有 Downloads。",
+            subcommands: [Set.self, Add.self, Remove.self]
+        )
+
+        struct Set: ParsableCommand {
+            static let configuration = CommandConfiguration(abstract: "替换全部扫描文件夹。")
+            @Argument(help: "一个或多个文件夹") var paths: [String]
+            func run() throws { try ConfigSources.change(.set, paths) }
+        }
+        struct Add: ParsableCommand {
+            static let configuration = CommandConfiguration(abstract: "添加扫描文件夹。")
+            @Argument(help: "一个或多个文件夹") var paths: [String]
+            func run() throws { try ConfigSources.change(.add, paths) }
+        }
+        struct Remove: ParsableCommand {
+            static let configuration = CommandConfiguration(abstract: "移除扫描文件夹。")
+            @Argument(help: "一个或多个文件夹") var paths: [String]
+            func run() throws { try ConfigSources.change(.remove, paths) }
+        }
+
+        enum Change { case set, add, remove }
+        static func change(_ operation: Change, _ paths: [String]) throws {
+            guard !paths.isEmpty else { throw ValidationError("请指定至少一个文件夹") }
+            let base = Settings.load()
+            do {
+                let saved = try AppLock.withLock(base.dataDir) {
+                    let db = try Database(path: base.database)
+                    defer { db.close() }
+                    let store = PreferenceStore(db, base: base)
+                    let current = store.get().scanRoots
+                    let requested = paths.map { Paths.resolve(Paths.expand($0)) }
+                    let next: [URL]
+                    switch operation {
+                    case .set: next = requested
+                    case .add: next = current + requested
+                    case .remove:
+                        let removed = Swift.Set(requested.map(\.path))
+                        next = current.filter { !removed.contains(Paths.resolve($0).path) }
+                        if next.count == current.count { throw ValidationError("没有匹配的已配置扫描目录") }
+                    }
+                    return try store.setScanRoots(next)
+                }
+                output("扫描目录已更新：")
+                for root in saved.scanRoots { output("  \(root.path)") }
+                output("扫描目录有变化时，自动整理会关闭；如需使用请重新启用。")
+            } catch { throw ValidationError("\(error)") }
         }
     }
 
@@ -601,7 +654,7 @@ struct Auto: ParsableCommand {
 // MARK: - watch
 
 struct Watch: ParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "以前台进程监控 Downloads；只更新索引，不移动文件。")
+    static let configuration = CommandConfiguration(abstract: "以前台进程监控已配置文件夹；只更新索引，不移动文件。")
 
     @Option(help: "补扫间隔（秒）") var interval = 300
 
@@ -609,24 +662,28 @@ struct Watch: ParsableCommand {
         let context = try Context.open()
         defer { context.close() }
         let settings = context.settings
-        output("正在监控 \(settings.downloads.path)。按 Ctrl-C 停止。")
+        output("正在监控 \(settings.scanRoots.map(\.path).joined(separator: "、"))。按 Ctrl-C 停止。")
         let initial = try AppLock.withLock(settings.dataDir) {
             try Scanner.scan(context.db, settings, waitForStability: true)
         }
         output("初始索引：更新 \(initial.scanned) 个文件，\(initial.errors) 个错误")
 
-        let descriptor = open(settings.downloads.path, O_EVTONLY)
-        guard descriptor >= 0 else { throw OrganizerError("无法监控 \(settings.downloads.path)") }
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: descriptor,
-            eventMask: [.write, .delete, .rename, .extend, .attrib],
-            queue: .global()
-        )
         let wake = DispatchSemaphore(value: 0)
-        source.setEventHandler { wake.signal() }
-        source.setCancelHandler { close(descriptor) }
-        source.resume()
-        defer { source.cancel() }
+        var sources: [any DispatchSourceFileSystemObject] = []
+        defer { sources.forEach { $0.cancel() } }
+        for root in settings.scanRoots {
+            let descriptor = open(root.path, O_EVTONLY)
+            guard descriptor >= 0 else { throw OrganizerError("无法监控 \(root.path)") }
+            let source = DispatchSource.makeFileSystemObjectSource(
+                fileDescriptor: descriptor,
+                eventMask: [.write, .delete, .rename, .extend, .attrib],
+                queue: .global()
+            )
+            source.setEventHandler { wake.signal() }
+            source.setCancelHandler { close(descriptor) }
+            source.resume()
+            sources.append(source)
+        }
 
         while true {
             _ = wake.wait(timeout: .now() + Double(interval))

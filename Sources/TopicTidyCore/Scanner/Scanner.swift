@@ -23,29 +23,31 @@ public enum Scanner {
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Top-level regular files, sorted by lowercased name.
+    /// Top-level regular files in every configured root, sorted stably.
     public static func candidates(_ settings: Settings) throws -> [URL] {
-        let downloads = settings.downloads
-        guard FileSystem.exists(downloads.path), FileSystem.isDirectory(downloads.path) else {
-            throw OrganizerError("Downloads 目录不存在：\(downloads.path)")
-        }
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: downloads.path)) ?? []
         var result: [URL] = []
-        for name in names {
-            if name == settings.organizedName || name.hasPrefix(".") { continue }
-            let path = downloads.appendingPathComponent(name)
-            if FileSystem.isSymlink(path.path) { continue }
-            if !FileSystem.isRegularFile(path.path) { continue }
-            if AppDefaults.incompleteSuffixes.contains("." + path.pathExtension.lowercased()) { continue }
-            result.append(path)
+        for root in settings.scanRoots {
+            guard FileSystem.isDirectory(root.path) && !FileSystem.isSymlink(root.path) else {
+                throw OrganizerError("扫描目录不可用：\(root.path)")
+            }
+            let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+            for name in names {
+                if name.hasPrefix(".") { continue }
+                let path = root.appendingPathComponent(name)
+                if FileSystem.isSymlink(path.path) { continue }
+                if !FileSystem.isRegularFile(path.path) { continue }
+                if AppDefaults.incompleteSuffixes.contains("." + path.pathExtension.lowercased()) { continue }
+                result.append(path)
+            }
         }
-        return result.sorted { Py.less(Py.lower($0.lastPathComponent), Py.lower($1.lastPathComponent)) }
+        return result.sorted {
+            let left = Py.lower($0.lastPathComponent), right = Py.lower($1.lastPathComponent)
+            return left == right ? Py.less($0.path, $1.path) : Py.less(left, right)
+        }
     }
 
-    static func isStable(_ path: URL, seconds: Double) -> Bool {
-        guard let first = FileStat(path: path.path) else { return false }
-        if seconds > 0 { Thread.sleep(forTimeInterval: seconds) }
-        guard let second = FileStat(path: path.path) else { return false }
+    static func isStable(_ first: FileStat?, _ second: FileStat?) -> Bool {
+        guard let first, let second else { return false }
         return first.size == second.size
             && first.modifiedSeconds == second.modifiedSeconds
             && first.modifiedNanoseconds == second.modifiedNanoseconds
@@ -60,10 +62,16 @@ public enum Scanner {
         var stats = ScanStats()
         var seen: Set<String> = []
         let now = Date().timeIntervalSince1970
+        let paths = try candidates(settings)
+        var initialStats: [String: FileStat] = [:]
+        if waitForStability {
+            for path in paths { initialStats[path.path] = FileStat(path: path.path) }
+            if settings.stableSeconds > 0 { Thread.sleep(forTimeInterval: settings.stableSeconds) }
+        }
 
-        for path in try candidates(settings) {
+        for path in paths {
             do {
-                if waitForStability && !isStable(path, seconds: settings.stableSeconds) {
+                if waitForStability && !isStable(initialStats[path.path], FileStat(path: path.path)) {
                     stats.skipped += 1
                     continue
                 }

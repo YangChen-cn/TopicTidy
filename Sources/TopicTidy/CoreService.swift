@@ -29,6 +29,7 @@ extension Snapshot {
                 Batch(id: $0.id, kind: $0.kind, status: $0.status, created_at: $0.createdAt)
             },
             preferences: Preferences(
+                scan_roots: session.preferences.scanRoots.map(\.path),
                 destination: session.preferences.destination.path,
                 auto_confirm_enabled: session.preferences.autoConfirmEnabled,
                 auto_confirm_threshold: session.preferences.autoConfirmThreshold

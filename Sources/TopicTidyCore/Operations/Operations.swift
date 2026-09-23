@@ -115,10 +115,27 @@ public enum Operations {
         let raw = (config["organized_dir"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             ?? settings.organizedDir.path
         let root = Paths.resolve(Paths.expand(raw))
-        if root.path == Paths.resolve(settings.downloads).path {
-            throw OrganizerError("整理根目录不能直接等于 Downloads")
+        if config["scan_roots"] != nil && root.path != raw {
+            throw OrganizerError("方案的整理目录已被符号链接重定向")
+        }
+        if planScanRoots(settings, config: config).contains(where: { $0.path == root.path }) {
+            throw OrganizerError("整理根目录不能直接等于扫描目录")
         }
         return root
+    }
+
+    /// A saved plan retains its source roots even if the preference changes.
+    public static func planScanRoots(_ db: Database, _ settings: Settings, _ planID: Int) throws -> [URL] {
+        guard let plan = try db.connection.query("SELECT config_json FROM plans WHERE id=?", [planID]).first else {
+            throw OrganizerError("方案 \(planID) 不存在")
+        }
+        return planScanRoots(settings, config: JSONValue.stringDictionary(plan["config_json"].string))
+    }
+
+    private static func planScanRoots(_ settings: Settings, config: [String: Any]) -> [URL] {
+        let stored = config["scan_roots"] as? [String] ?? []
+        return stored.isEmpty ? [Paths.resolve(settings.downloads)]
+            : stored.map { URL(fileURLWithPath: $0) }
     }
 
     public static func previewMoves(
@@ -165,6 +182,10 @@ public enum Operations {
         memberIDs: Set<Int>? = nil
     ) throws -> (batchID: Int, results: [OperationResult]) {
         let organizedRoot = try planDestinationRoot(db, settings, planID)
+        let sourceRoots = try planScanRoots(db, settings, planID)
+        if sourceRoots.contains(where: { FileSystem.isSymlink($0.path) || Paths.resolve($0).path != $0.path }) {
+            throw OrganizerError("方案的扫描目录已被符号链接重定向")
+        }
         if FileSystem.isSymlink(organizedRoot.path) {
             throw OrganizerError("整理根目录不能是符号链接")
         }
@@ -203,7 +224,8 @@ public enum Operations {
                     || Scanner.fingerprint(move.source) != move.fingerprint {
                     throw OrganizerError("文件在方案生成后已改变或已消失")
                 }
-                if !within(move.source, settings.downloads) || !within(move.destination, organizedRoot) {
+                if !sourceRoots.contains(where: { within(move.source, $0) })
+                    || !within(move.destination, organizedRoot) {
                     throw OrganizerError("移动路径越出允许范围")
                 }
                 try FileManager.default.createDirectory(
@@ -276,6 +298,10 @@ public enum Operations {
         }
         let planID = original["plan_id"].int
         let organizedRoot = try planDestinationRoot(db, settings, planID)
+        let sourceRoots = try planScanRoots(db, settings, planID)
+        if sourceRoots.contains(where: { FileSystem.isSymlink($0.path) || Paths.resolve($0).path != $0.path }) {
+            throw OrganizerError("方案的扫描目录已被符号链接重定向")
+        }
         let rows = try db.connection.query(
             "SELECT * FROM operation_logs WHERE batch_id=? AND status='moved' ORDER BY id DESC", [batchID]
         )
@@ -308,7 +334,8 @@ public enum Operations {
                 if FileSystem.exists(originalPath.path) {
                     throw OrganizerError("原路径已被占用")
                 }
-                if !within(current, organizedRoot) || !within(originalPath, settings.downloads) {
+                if !within(current, organizedRoot)
+                    || !sourceRoots.contains(where: { within(originalPath, $0) }) {
                     throw OrganizerError("撤销路径越出允许范围")
                 }
                 try FileManager.default.createDirectory(

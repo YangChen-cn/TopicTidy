@@ -314,7 +314,8 @@ public enum ClusterEngine {
                     "cross_language_candidate_neighbors": settings.crossLanguageCandidateNeighbors,
                     "cross_language_translation_limit": settings.crossLanguageTranslationLimit,
                     "cross_language_time_window_seconds": AppDefaults.crossLanguageTimeWindowSeconds,
-                    "organized_dir": settings.organizedDir.path,
+                    "organized_dir": Paths.resolve(settings.organizedDir).path,
+                    "scan_roots": settings.scanRoots.map { Paths.resolve($0).path },
                 ])]
             )
             planID = database.connection.lastInsertRowID

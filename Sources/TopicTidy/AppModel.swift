@@ -38,6 +38,7 @@ import TopicTidyCore
         if let args = values["args"] as? [String] { request.args = args }
         if let confirmed = values["confirmed"] as? Bool { request.confirmed = confirmed }
         if let destination = values["destination"] as? String { request.destination = destination }
+        if let scanRoots = values["scan_roots"] as? [String] { request.scanRoots = scanRoots }
         if let enabled = values["enabled"] as? Bool { request.enabled = enabled }
         if let threshold = values["threshold"] as? Double { request.threshold = threshold }
         if let at = values["at"] as? String { request.at = at }

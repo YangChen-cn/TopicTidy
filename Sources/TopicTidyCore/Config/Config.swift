@@ -81,6 +81,9 @@ public func bodyCourses(_ value: String) -> Set<String> {
 
 public struct Settings: Sendable, Equatable {
     public var downloads: URL
+    /// Top-level folders to index. Downloads remains the default and the
+    /// fallback location for the organized destination.
+    public var scanRoots: [URL]
     public var dataDir: URL
     public var organizedName: String = AppDefaults.organizedName
     public var organizedRoot: URL?
@@ -95,6 +98,7 @@ public struct Settings: Sendable, Equatable {
 
     public init(downloads: URL, dataDir: URL) {
         self.downloads = downloads
+        self.scanRoots = [downloads]
         self.dataDir = dataDir
     }
 
@@ -104,9 +108,10 @@ public struct Settings: Sendable, Equatable {
         organizedRoot ?? downloads.appendingPathComponent(organizedName)
     }
 
-    public func with(organizedRoot: URL? = nil, autoConfirmEnabled: Bool? = nil,
+    public func with(scanRoots: [URL]? = nil, organizedRoot: URL? = nil, autoConfirmEnabled: Bool? = nil,
                      autoConfirmThreshold: Double? = nil) -> Settings {
         var copy = self
+        if let scanRoots { copy.scanRoots = scanRoots }
         if let organizedRoot { copy.organizedRoot = organizedRoot }
         if let autoConfirmEnabled { copy.autoConfirmEnabled = autoConfirmEnabled }
         if let autoConfirmThreshold { copy.autoConfirmThreshold = autoConfirmThreshold }

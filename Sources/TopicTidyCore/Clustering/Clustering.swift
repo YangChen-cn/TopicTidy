@@ -553,6 +553,17 @@ public enum Clustering {
     static func completeLink(_ clusters: [[IndexedFile]], threshold: Double,
                              cache: ClusterCache) -> [[IndexedFile]] {
         var clusters = clusters
+        // Pair scores depend on two immutable indexed files. Complete-link
+        // revisits the same pairs after every merge, so calculate each score
+        // once for this proposal instead of repeating URL/text/vector work.
+        let files = clusters.flatMap { $0 }
+        var pairScores: [PairKey: Double] = [:]
+        for (index, left) in files.enumerated() {
+            for right in files.dropFirst(index + 1) {
+                pairScores[PairKey(min(left.id, right.id), max(left.id, right.id))] =
+                    assessPair(left, right, cache: cache).total
+            }
+        }
         while true {
             var best: (Double, Int, Int)?
             for leftIndex in clusters.indices {
@@ -561,7 +572,7 @@ public enum Clustering {
                     var hasPairs = false
                     for left in clusters[leftIndex] {
                         for right in clusters[rightIndex] {
-                            let total = assessPair(left, right, cache: cache).total
+                            let total = pairScores[PairKey(min(left.id, right.id), max(left.id, right.id))] ?? 0
                             score = hasPairs ? min(score, total) : total
                             hasPairs = true
                         }

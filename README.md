@@ -27,6 +27,7 @@ TopicTidy 不按扩展名粗暴分类。它综合课程号、文件名、下载�
 - 主题级确认、取消和撤销，不必整批接受；取消的主题进入侧栏默认折叠的“已取消”分组，下次扫描不再提出，直到手动恢复
 - SQLite 保存方案、人工修正、目录关联和逐文件操作日志
 - 默认离线、默认保守、绝不覆盖同名文件
+- 可同时扫描多个自选文件夹，默认只扫描 `~/Downloads` 顶层
 - 纯原生 Swift：同一套 `TopicTidyCore` 同时提供菜单栏 GUI 与 `tt` CLI，运行时不需要 Python、pip 或 Xcode
 
 ## 安装
@@ -99,12 +100,16 @@ tt undo 1
 
 ```bash
 tt config destination ~/Documents/TopicTidy
+tt config sources add ~/Documents/Courses ~/Desktop/ProjectFiles
+tt config sources remove ~/Desktop/ProjectFiles
+tt config sources set ~/Downloads ~/Documents/Courses
+tt config show --json
 tt config auto-confirm --enable --threshold 0.92
 tt schedule enable --at 09:00
 tt semantic status
 ```
 
-`scan` 只读取 Downloads 顶层普通文件，忽略目录、符号链接、隐藏文件、Organized 和未完成下载。`propose --json` 输出稳定的 `topic_id`、可编辑的 `display_name`，以及 course code、文件名、正文、native semantic、cross-language semantic 和来源 URL 的结构化证据。
+`scan` 只读取各扫描文件夹的顶层普通文件，忽略子目录、符号链接、隐藏文件和未完成下载。菜单栏「设置 → 扫描文件夹」也可添加或移除目录，至少保留一个；更改扫描目录会关闭自动整理，须再次明确启用。当前版本要求扫描目录与整理目录在同一磁盘。`propose --json` 输出稳定的 `topic_id`、可编辑的 `display_name`，以及 course code、文件名、正文、native semantic、cross-language semantic 和来源 URL 的结构化证据。
 
 `apply` 会重新计算实际目标并要求确认。方案生成后已变化的文件会跳过；同名冲突使用稳定编号后缀，绝不覆盖。高置信度自动确认默认关闭，只处理完整、无排除成员、无冲突且达到阈值的主题。
 
@@ -126,7 +131,7 @@ tt semantic status
 ## 工作原理
 
 ```text
-Downloads 顶层文件
+已配置文件夹的顶层文件（默认 ~/Downloads）
    ↓ 扫描（只读）
 课程号 / 文件名 / 来源 URL / 正文 / 本地语义
    ↓ 保守聚类 + 结构化证据
@@ -141,10 +146,11 @@ Downloads 顶层文件
 
 ```bash
 swift build            # 构建 Core、tt、TopicTidy
-swift test             # 75 项测试：扫描、提取、聚类、操作、自动化、GUI 与关于页
+swift test             # 扫描、提取、聚类、操作、自动化与 GUI 测试
 .build/debug/tt benchmark            # 核心聚类基准（F1 门禁）
 .build/debug/tt benchmark Resources/fixtures/holdout_unseen.json
-scripts/build_app.sh   # 生成签名 .app 与 DMG
+scripts/build_app.sh --app-only # 本地签名 .app，供 GUI 手动验收
+scripts/build_app.sh   # 用户明确要求发布时才生成签名 .app 与 DMG
 scripts/package_cli.sh # 生成 CLI 压缩包
 scripts/package_cli.sh --skip-build # 复用已编译的 tt 打包 CLI
 scripts/generate_release_notes.sh   # 生成 Release Notes（tag 区间 commit）

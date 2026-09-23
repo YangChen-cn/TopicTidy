@@ -30,3 +30,21 @@
 新增的合成 holdout 保护 GitHub 同仓库/异仓库边界，以及没有其他证据时 0.89 的跨语言语义假阳性。完整 `swift test` 和内置 core/holdout benchmark 均通过。
 
 本轮仅执行了 `scan` 与 `propose`，未运行 `apply` 或自动移动。本机的 `manifest-110.json`、`proposal-swift-110-verified.json` 和 `evaluation-swift-110.json` 可供逐文件复核。
+
+## 重复与增量运行（2026-09-24）
+
+在同一台 Mac 上，把原始 110 文件语料复制到新的临时目录和全新 SQLite state；增加与修改操作只发生在临时副本。两轮都调用相同的本地 release 构建、相同已安装的 Apple 语言资产，使用墙钟时间计量单次命令。`propose` 开启原生语义与按需翻译；增加的是一份 Markdown 副本，修改的是该新增文件的正文。数字受系统缓存和后台负载影响，不能当作稳定性能承诺。
+
+| 操作 | 优化前 | 优化后 |
+| --- | ---: | ---: |
+| 首次 `scan` | 0.89 s | 1.16 s |
+| 首次 `propose` | 29.63 s | 20.53 s |
+| 无变化再次 `propose` | 12.20 s | 3.77 s |
+| 新增 1 文件后 `scan` | 0.05 s | 0.05 s |
+| 新增 1 文件后 `propose` | 12.61 s | 3.93 s |
+| 修改 1 文件后 `scan` | 0.05 s | 0.05 s |
+| 修改 1 文件后 `propose` | 16.38 s | 7.82 s |
+
+采样显示无变化时主要耗时来自 complete-link 聚类重复计算同一文件对。现在同一次 proposal 内只计算一次文件对评分；原有提取、原生语义和翻译结果仍按文件指纹/版本保存在 SQLite。修改后的 proposal 需重新生成该文件的语义向量和可能的 English pivot，因此比无变化运行慢。优化前后的分组结果仍需通过冻结 benchmark 门禁，不能以速度换掉保守性。
+
+另用新的临时副本对原始 110 文件重新 `scan`/`propose`：17 个建议组的成员集合和全部未分类文件，与优化前保存的方案逐项一致。新方案保存在本机 `proposal-swift-110-incremental-verified.json`。

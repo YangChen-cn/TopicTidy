@@ -88,10 +88,10 @@ struct OrganizerView: View {
                 } else if model.snapshot?.plan_id == nil {
                     VStack(spacing: 12) {
                         Image(systemName: "tray.and.arrow.down").font(.system(size: 32, weight: .light)).foregroundStyle(.secondary)
-                        Text("从下载文件中发现主题").font(.headline)
+                        Text("从文件中发现主题").font(.headline)
                         Text("扫描后查看建议，确认前文件保留原位。")
                             .font(.callout).foregroundStyle(.secondary)
-                        Button("扫描下载文件") { Task { await model.perform("scan") } }
+                        Button("扫描文件夹") { Task { await model.perform("scan") } }
                             .buttonStyle(.borderedProminent).disabled(model.busy)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {

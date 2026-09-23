@@ -63,10 +63,10 @@ struct PanelView: View {
             if groups.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "tray.and.arrow.down").font(.system(size: 28, weight: .light)).foregroundStyle(.secondary)
-                    Text("给下载文件一个归处").font(.system(size: 14, weight: .medium))
+                    Text("让文件各归其处").font(.system(size: 14, weight: .medium))
                     Text("发现相同课程和主题，确认后再整理。")
                         .font(.caption).foregroundStyle(.secondary)
-                    Button("扫描下载文件") { Task { await model.perform("scan") } }
+                    Button("扫描文件夹") { Task { await model.perform("scan") } }
                         .buttonStyle(.borderedProminent).padding(.top, 3).disabled(model.busy)
                 }.frame(maxWidth: .infinity).padding(.vertical, 28)
             } else {
