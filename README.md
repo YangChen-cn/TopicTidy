@@ -17,7 +17,25 @@
   <a href="https://github.com/YangChen-cn/TopicTidy/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/YangChen-cn/TopicTidy"></a>
 </p>
 
-TopicTidy 不按扩展名粗暴分类。它综合课程号、文件名、下载来源、文档正文和 Apple 本地语义能力，识别属于同一课程、项目或主题的文件。每个建议都会解释依据；文件在确认前保持原位，整理后也能安全撤销。
+TopicTidy 把散落在下载目录里的同一课程、项目或主题文件放进一份**可审阅的整理方案**。它结合课程号、文件名、来源、正文和 Apple 本地语义能力；确认前不移动文件，整理后可以撤销。
+
+**先扫描 → 查看分组与依据 → 按主题确认 → 随时撤销。** 默认只读、离线，自动整理默认关闭。
+
+### 118 文件演示
+
+以下演示使用独立测试目录中的 118 份文件，并使用全新隔离状态；只运行扫描和建议生成，**没有移动文件**。
+
+![118 文件隔离扫描的主题建议概览](docs/images/118-file-demo.svg)
+
+<p align="center"><img src="docs/images/118-file-overview.png" width="760" alt="TopicTidy 原生窗口展示 118 文件的主题建议和文件列表"></p>
+
+<p align="center"><sub>真实窗口：118 个文件的建议总览。截图使用隔离测试目录；没有执行确认或移动。</sub></p>
+
+| 扫描 | 建议主题 | 留待人工判断 |
+| ---: | ---: | ---: |
+| 118 个文件 | 17 个主题、94 个文件 | 24 个未分类文件 |
+
+包含真实课程课件及项目资料。不同章节的课件可以归入同一课程；依据不足的文件保留原位。评估方法和逐主题结果见 [118 文件复测](docs/REAL_WORLD_118_EVALUATION.md)。
 
 ## 特点
 
@@ -48,7 +66,7 @@ brew install --cask YangChen-cn/tap/topictidy
 brew install --cask YangChen-cn/tap/topictidy-cli
 ```
 
-> 两个 Cask 分发的都是自签名、未经 Apple 公证的产物，Homebrew 下载后会带上隔离标记。
+> 两个 Cask 分发的都是自签名，Homebrew 下载后会带上隔离标记。
 > 应用首次启动时系统会提示“未验证”，在“系统设置 → 隐私与安全性”中允许即可；
 > `tt` 被系统终止时（`Killed: 9`，exit 137）执行一次：
 >
@@ -67,11 +85,11 @@ brew install --cask YangChen-cn/tap/topictidy-cli
 curl -fsSL https://raw.githubusercontent.com/YangChen-cn/TopicTidy/main/install.sh | sh
 ```
 
-可用 `TOPICTIDY_VERSION=0.10.1` 指定版本，`TOPICTIDY_INSTALL_DIR` 指定安装目录。
+可用 `TOPICTIDY_VERSION=1.0.0` 指定版本，`TOPICTIDY_INSTALL_DIR` 指定安装目录。
 
 ### DMG
 
-1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-0.10.1-arm64.dmg`。
+1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-1.0.0-arm64.dmg`。
 2. 打开 DMG，把 TopicTidy 拖入 Applications。
 3. 启动后点击菜单栏托盘图标。
 
@@ -82,7 +100,8 @@ curl -fsSL https://raw.githubusercontent.com/YangChen-cn/TopicTidy/main/install.
 ```bash
 swift build -c release
 .build/release/tt --help          # CLI
-open .build/release/…             # 或运行 .app（见开发一节）
+scripts/build_app.sh --app-only   # 生成本地 .app
+open dist/TopicTidy.app
 ```
 
 ## CLI 快速开始
@@ -115,9 +134,13 @@ tt semantic status
 
 ## GUI
 
-菜单栏面板可完成扫描、主题审阅、文件调整、单主题确认、历史撤销和设置。完整窗口提供更宽的主题侧栏与证据视图，工具栏的 ⓘ 打开「关于 TopicTidy」——版本、作者与主要特点都在那里。SwiftUI 只负责界面，扫描、分类、SQLite、移动和恢复都由 `TopicTidyCore` 在同一进程内完成。
+菜单栏面板可完成扫描、主题审阅、文件调整、单主题确认、历史撤销和设置。完整窗口提供原生主题侧栏、文件多选、拖入主题、空格 Quick Look 与证据视图。设置集中在一页，面板空间不足时可以滚动。
 
-运行阶段不联网，也不依赖开发机路径。
+<p align="center"><img src="docs/images/118-file-evidence.png" width="1000" alt="MIT 6.006 课程的四份讲义与组级匹配依据"></p>
+
+<p align="center"><sub>真实窗口：四份 MIT 6.006 讲义与组级依据；评分是启发式，整理前仍需核对。</sub></p>
+
+确认前可以检查每个主题的文件和依据，也可以移动、拆分、合并或排除文件。整理操作保留确认和撤销；工具栏的 ⓘ 可查看应用信息。界面与 CLI 共用 `TopicTidyCore`，运行阶段不联网，也不依赖开发机路径。
 
 <!-- SIZE_TABLE_START -->
 | 分发物 | 迁移前（Python Core） | 迁移后（原生 Swift） | 减少 |

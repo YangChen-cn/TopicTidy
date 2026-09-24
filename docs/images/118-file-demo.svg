@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">TopicTidy 118 文件建议概览</title>
+  <desc id="description">118 个文件中，94 个文件得到 17 个主题建议，24 个文件保留未分类。图表展示真实测试方案中的部分主题及文件数量。</desc>
+  <defs>
+    <linearGradient id="background" x2="1" y2="1">
+      <stop stop-color="#101f38"/>
+      <stop offset="1" stop-color="#172e51"/>
+    </linearGradient>
+    <linearGradient id="bar" x2="1">
+      <stop stop-color="#55b8ff"/>
+      <stop offset="1" stop-color="#6de4cd"/>
+    </linearGradient>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif; }
+      .muted { fill: #aec1d9; }
+      .label { fill: #eaf4ff; font-size: 23px; }
+      .count { fill: #eaf4ff; font-size: 22px; font-weight: 700; text-anchor: end; }
+    </style>
+  </defs>
+  <rect width="1200" height="630" rx="28" fill="url(#background)"/>
+  <text x="58" y="69" fill="#73dcca" font-size="22" font-weight="700" letter-spacing="3">TOPICTIDY / 118 FILE DEMO</text>
+  <text x="58" y="125" fill="#fff" font-size="39" font-weight="700">从文件堆到可审阅的主题建议</text>
+  <text x="58" y="166" class="muted" font-size="21">独立测试目录 · 只扫描和生成建议 · 文件没有移动</text>
+
+  <rect x="58" y="200" width="326" height="117" rx="19" fill="#233e62"/>
+  <text x="82" y="240" class="muted" font-size="20">扫描文件</text>
+  <text x="82" y="295" fill="#fff" font-size="50" font-weight="700">118</text>
+  <rect x="401" y="200" width="326" height="117" rx="19" fill="#233e62"/>
+  <text x="425" y="240" class="muted" font-size="20">主题建议 / 已归组文件</text>
+  <text x="425" y="295" fill="#75dbc9" font-size="50" font-weight="700">17 / 94</text>
+  <rect x="744" y="200" width="398" height="117" rx="19" fill="#233e62"/>
+  <text x="768" y="240" class="muted" font-size="20">保留未分类，等待人工判断</text>
+  <text x="768" y="295" fill="#fff" font-size="50" font-weight="700">24</text>
+
+  <text x="58" y="372" fill="#fff" font-size="25" font-weight="700">建议中的部分主题</text>
+  <text x="1142" y="372" class="muted" font-size="18" text-anchor="end">条长代表文件数</text>
+  <text x="58" y="416" class="label">嵌入式 Linux 学习笔记</text>
+  <rect x="446" y="395" width="600" height="26" rx="13" fill="#284466"/><rect x="446" y="395" width="600" height="26" rx="13" fill="url(#bar)"/>
+  <text x="1129" y="416" class="count">10</text>
+  <text x="58" y="464" class="label">FreeRTOS</text>
+  <rect x="446" y="443" width="600" height="26" rx="13" fill="#284466"/><rect x="446" y="443" width="540" height="26" rx="13" fill="url(#bar)"/>
+  <text x="1129" y="464" class="count">9</text>
+  <text x="58" y="512" class="label">Microsoft AI Beginners</text>
+  <rect x="446" y="491" width="600" height="26" rx="13" fill="#284466"/><rect x="446" y="491" width="480" height="26" rx="13" fill="url(#bar)"/>
+  <text x="1129" y="512" class="count">8</text>
+  <text x="58" y="560" class="label">MIT 6.S23</text>
+  <rect x="446" y="539" width="600" height="26" rx="13" fill="#284466"/><rect x="446" y="539" width="360" height="26" rx="13" fill="url(#bar)"/>
+  <text x="1129" y="560" class="count">6</text>
+  <text x="58" y="608" class="muted" font-size="17">数据来源：118 文件隔离扫描的已保存方案 · 分组为建议，须审阅后确认</text>
+</svg>

@@ -14,7 +14,6 @@ struct OrganizerView: View {
     @State private var showExcludeConfirmation = false
     @State private var quickLookURL: URL?
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var groups: [TopicGroup] { TopicGroup.make(model.snapshot?.members ?? []) }
     private var dismissed: [DismissedGroup] { model.snapshot?.dismissed ?? [] }
@@ -61,8 +60,8 @@ struct OrganizerView: View {
             sidebar
         } detail: {
             detail
-                .inspector(isPresented: $showInspector) { inspector }
         }
+        .inspector(isPresented: $showInspector) { inspector }
         .searchable(text: $search, prompt: "查找文件或主题")
         .toolbar {
             ToolbarItemGroup {
@@ -99,7 +98,7 @@ struct OrganizerView: View {
                 } label: { Label("所选文件操作", systemImage: "ellipsis.circle") }
                     .disabled(model.busy || selectedMembers.isEmpty)
                 Button("匹配依据", systemImage: "sidebar.right") {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { showInspector.toggle() }
+                    showInspector.toggle()
                 }
                 .disabled(selectedGroup == nil && selectedMembers.isEmpty)
                 .help("显示匹配依据与文件信息")
@@ -127,7 +126,7 @@ struct OrganizerView: View {
         .onChange(of: selection) { _, _ in selectedMemberIDs.removeAll() }
         .onChange(of: search) { _, _ in selectedMemberIDs.removeAll() }
         .onChange(of: model.snapshot?.plan_id) { _, _ in selectedMemberIDs.removeAll() }
-        .frame(minWidth: 760, minHeight: 460)
+        .frame(minWidth: 1100, minHeight: 460)
     }
 
     private var sidebar: some View {
