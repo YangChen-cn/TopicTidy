@@ -35,9 +35,7 @@ struct PanelView: View {
         .frame(width: dynamicTypeSize.isAccessibilitySize ? 460 : 340)
         .fixedSize(horizontal: false, vertical: true)
         .task { await model.perform("status") }
-        .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
-            Button("好") { model.error = nil }
-        } message: { Text(model.error ?? "") }
+        .databaseRecoveryAlert(model: model)
     }
 
     private var header: some View {

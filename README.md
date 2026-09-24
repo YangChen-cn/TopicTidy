@@ -79,11 +79,11 @@ brew install --cask YangChen-cn/tap/topictidy-cli
 curl -fsSL https://raw.githubusercontent.com/YangChen-cn/TopicTidy/main/install.sh | sh
 ```
 
-可用 `TOPICTIDY_VERSION=1.0.0` 指定版本，`TOPICTIDY_INSTALL_DIR` 指定安装目录。
+可用 `TOPICTIDY_VERSION=1.0.1` 指定版本，`TOPICTIDY_INSTALL_DIR` 指定安装目录。
 
 ### DMG
 
-1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-1.0.0-arm64.dmg`。
+1. 从 [GitHub Releases](https://github.com/YangChen-cn/TopicTidy/releases/latest) 下载 `TopicTidy-1.0.1-arm64.dmg`。
 2. 打开 DMG，把 TopicTidy 拖入 Applications。
 3. 启动后点击菜单栏托盘图标。
 
@@ -135,6 +135,8 @@ tt semantic status
 <p align="center"><sub>真实窗口：四份 MIT 6.006 讲义与组级依据；评分是启发式，整理前仍需核对。</sub></p>
 
 确认前可以检查每个主题的文件和依据，也可以移动、拆分、合并或排除文件。整理操作保留确认和撤销；工具栏的 ⓘ 可查看应用信息。界面与 CLI 共用 `TopicTidyCore`，运行阶段不联网，也不依赖开发机路径。
+
+如果旧版数据库与当前版本不兼容，应用会显示「删除旧数据库并重扫」。只有点击这个按钮后才会清除本机数据库（整理记录、人工修正和数据库中的设置）并重新扫描；下载文件不会被删除或移动。
 
 <!-- SIZE_TABLE_START -->
 | 分发物 | 迁移前（Python Core） | 迁移后（原生 Swift） | 减少 |

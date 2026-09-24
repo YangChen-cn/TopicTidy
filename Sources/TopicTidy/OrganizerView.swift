@@ -120,9 +120,7 @@ struct OrganizerView: View {
         } message: {
             Text("排除后这些文件不会进入本次整理。可以重新扫描生成新建议。")
         }
-        .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
-            Button("好") { model.error = nil }
-        } message: { Text(model.error ?? "") }
+        .databaseRecoveryAlert(model: model)
         .onChange(of: selection) { _, _ in selectedMemberIDs.removeAll() }
         .onChange(of: search) { _, _ in selectedMemberIDs.removeAll() }
         .onChange(of: model.snapshot?.plan_id) { _, _ in selectedMemberIDs.removeAll() }

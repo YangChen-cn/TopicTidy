@@ -6,7 +6,7 @@ import Foundation
 /// this value; the app bundle's `CFBundleShortVersionString` is generated from
 /// it, so the two cannot drift.
 public enum AppInfo {
-    public static let version = "1.0.0"
+    public static let version = "1.0.1"
     public static let name = "TopicTidy"
     public static let tagline = "本地、可解释、可撤销的 Downloads 整理器"
     public static let author = "Yang Chen"

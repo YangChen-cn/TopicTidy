@@ -7,6 +7,7 @@ import TopicTidyCore
     var progress: ServiceProgress?
     var message = "本机分析 · 确认后移动"
     var error: String?
+    var incompatibleDatabase = false
     var moves: [Move] = []
     private var activeOperationID: UUID?
     private let service = CoreService()
@@ -15,6 +16,7 @@ import TopicTidyCore
     func perform(_ action: String, values: [String: Any] = [:]) async -> Bool {
         guard !busy else { return false }
         error = nil
+        incompatibleDatabase = false
         busy = true
         progress = nil
         let operationID = UUID()
@@ -33,6 +35,7 @@ import TopicTidyCore
         }
         guard response.ok else {
             error = response.error ?? "操作失败"
+            incompatibleDatabase = response.incompatibleDatabase
             return false
         }
         snapshot = response.snapshot.map(Snapshot.init)

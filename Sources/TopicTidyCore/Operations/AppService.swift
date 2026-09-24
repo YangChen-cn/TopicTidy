@@ -152,14 +152,16 @@ public struct ServiceRequest: Sendable {
 public struct ServiceResponse: Sendable {
     public var ok: Bool
     public var error: String?
+    public var incompatibleDatabase = false
     public var snapshot: SessionSnapshot?
     public var message: String?
     public var moves: [SessionMove] = []
 
-    public init(ok: Bool, error: String? = nil, snapshot: SessionSnapshot? = nil,
-                message: String? = nil, moves: [SessionMove] = []) {
+    public init(ok: Bool, error: String? = nil, incompatibleDatabase: Bool = false,
+                snapshot: SessionSnapshot? = nil, message: String? = nil, moves: [SessionMove] = []) {
         self.ok = ok
         self.error = error
+        self.incompatibleDatabase = incompatibleDatabase
         self.snapshot = snapshot
         self.message = message
         self.moves = moves
@@ -273,6 +275,9 @@ public actor AppService {
             return try AppLock.withLock(base.dataDir) {
                 try perform(request, progress: progress)
             }
+        } catch let error as IncompatibleDatabaseVersion {
+            return ServiceResponse(ok: false, error: error.description,
+                                   incompatibleDatabase: error.found < error.expected)
         } catch {
             return ServiceResponse(ok: false, error: String(describing: error))
         }
@@ -282,6 +287,13 @@ public actor AppService {
         _ request: ServiceRequest,
         progress: (@Sendable (ServiceProgress) -> Void)?
     ) throws -> ServiceResponse {
+        if request.action == "delete-incompatible-database" {
+            try Database.deleteIncompatibleStore(at: base.database)
+            var scan = ServiceRequest()
+            scan.action = "scan"
+            scan.semantic = request.semantic
+            return try perform(scan, progress: progress)
+        }
         let db = try Database(path: base.database)
         defer { db.close() }
         _ = try db.recoverInterrupted()

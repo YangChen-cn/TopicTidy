@@ -34,6 +34,15 @@ public enum JSONValue {
     }
 }
 
+public struct IncompatibleDatabaseVersion: Error, CustomStringConvertible {
+    public let found: Int
+    public let expected: Int
+
+    public var description: String {
+        "数据库版本 \(found) 与当前版本 \(expected) 不兼容"
+    }
+}
+
 public final class Database {
     public static let schemaVersion = 7
 
@@ -128,11 +137,27 @@ public final class Database {
         if row == nil {
             try connection.run("INSERT INTO schema_meta(version) VALUES (?)", [Database.schemaVersion])
         } else if row![0].int != Database.schemaVersion {
-            throw SQLiteError(
-                message: "数据库版本 \(row![0].int) 与当前版本 \(Database.schemaVersion) 不兼容；"
-                    + "测试阶段请删除本地数据库后重新 scan",
-                code: -1
-            )
+            throw IncompatibleDatabaseVersion(found: row![0].int, expected: Database.schemaVersion)
+        }
+    }
+
+    /// Called only after the user confirms the destructive recovery action.
+    /// Never resets a database that this build can open.
+    public static func deleteIncompatibleStore(at path: URL) throws {
+        guard FileManager.default.fileExists(atPath: path.path) else {
+            throw SQLiteError(message: "旧数据库不存在，请重新扫描", code: -1)
+        }
+        let probe = try SQLiteConnection(path: path.path)
+        let version = try probe.query("SELECT version FROM schema_meta LIMIT 1").first?[0].int
+        probe.close()
+        guard let version, version < schemaVersion else {
+            throw SQLiteError(message: "数据库不是旧版本，未删除任何数据", code: -1)
+        }
+        for suffix in ["-wal", "-shm", ""] {
+            let file = URL(fileURLWithPath: path.path + suffix)
+            if FileManager.default.fileExists(atPath: file.path) {
+                try FileManager.default.removeItem(at: file)
+            }
         }
     }
 
