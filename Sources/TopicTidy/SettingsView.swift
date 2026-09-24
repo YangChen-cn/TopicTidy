@@ -13,7 +13,7 @@ struct SettingsView: View {
             .font(.caption).foregroundStyle(.secondary)
             .padding(.horizontal, 16).padding(.vertical, 10)
         }
+        .databaseRecoveryNotice(model: model)
         .frame(width: 520, height: 520)
-        .databaseRecoveryAlert(model: model)
     }
 }

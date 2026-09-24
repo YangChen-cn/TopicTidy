@@ -23,20 +23,6 @@ struct PreferencesView: View {
             await model.perform("status")
             loadPreferences()
         }
-        .alert("启用自动整理？", isPresented: $confirmAutomatic) {
-            Button("取消", role: .cancel) {
-                automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
-            }
-            Button("明确授权并启用") {
-                Task {
-                    if !(await saveAutomatic()) {
-                        automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
-                    }
-                }
-            }
-        } message: {
-            Text("这是持续授权。每日任务可自动移动达到阈值的完整、无冲突主题；每次移动都会记录，之后可撤销。")
-        }
     }
 
     /// The dedicated Settings window keeps one native, scrollable Form.
@@ -154,6 +140,36 @@ struct PreferencesView: View {
             }
             .buttonStyle(.borderedProminent)
         }
+        // Asking for the ongoing authorization happens in the form, not in a
+        // sheet: a sheet in the menu bar panel closes the panel under the pointer.
+        if confirmAutomatic {
+            InlineNotice(
+                systemImage: "checkmark.shield",
+                title: "启用自动整理？",
+                message: "这是持续授权。每日任务可自动移动达到阈值的完整、无冲突主题；每次移动都会记录，之后可撤销。",
+                compact: compact
+            ) {
+                Button("明确授权并启用") {
+                    confirmAutomatic = false
+                    Task {
+                        if !(await saveAutomatic()) {
+                            automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                Button("取消", role: .cancel) { cancelAutomatic() }
+                    .keyboardShortcut(.cancelAction)
+            }
+            .onChange(of: automatic) { _, isOn in
+                if !isOn { confirmAutomatic = false }
+            }
+        }
+    }
+
+    private func cancelAutomatic() {
+        confirmAutomatic = false
+        automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
     }
 
     @ViewBuilder

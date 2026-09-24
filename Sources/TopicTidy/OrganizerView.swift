@@ -120,7 +120,7 @@ struct OrganizerView: View {
         } message: {
             Text("排除后这些文件不会进入本次整理。可以重新扫描生成新建议。")
         }
-        .databaseRecoveryAlert(model: model)
+        .databaseRecoveryNotice(model: model)
         .onChange(of: selection) { _, _ in selectedMemberIDs.removeAll() }
         .onChange(of: search) { _, _ in selectedMemberIDs.removeAll() }
         .onChange(of: model.snapshot?.plan_id) { _, _ in selectedMemberIDs.removeAll() }

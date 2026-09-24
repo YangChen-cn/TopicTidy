@@ -15,9 +15,14 @@ struct PanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            if showPreview {
+            if model.incompatibleDatabase {
+                // Nothing else in the panel can work until the database is rebuilt.
+                RecoveryNotice(model: model, compact: true)
+                footer
+            } else if showPreview {
                 MovePreview(model: model, moves: previewMoves) { showPreview = false }
             } else {
+                if model.error != nil { RecoveryNotice(model: model, compact: true) }
                 Picker("面板", selection: $tab) {
                     Text("建议").tag("review")
                     Text("记录").tag("history")
@@ -35,7 +40,6 @@ struct PanelView: View {
         .frame(width: dynamicTypeSize.isAccessibilitySize ? 460 : 340)
         .fixedSize(horizontal: false, vertical: true)
         .task { await model.perform("status") }
-        .databaseRecoveryAlert(model: model)
     }
 
     private var header: some View {

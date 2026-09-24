@@ -44,6 +44,13 @@ import TopicTidyCore
         return true
     }
 
+    /// Dismisses the inline notice. The next failing request brings it back, so
+    /// nothing has to re-derive the error state.
+    func dismissError() {
+        error = nil
+        incompatibleDatabase = false
+    }
+
     /// Keeps the call sites that previously built a JSON payload working.
     private func apply(_ values: [String: Any], to request: inout ServiceRequest) {
         if let plan = values["plan_id"] as? Int { request.planID = plan }
