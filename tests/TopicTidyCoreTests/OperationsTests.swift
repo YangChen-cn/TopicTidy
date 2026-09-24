@@ -234,6 +234,137 @@ private func coursePlan(_ workspace: Workspace) throws -> Int {
     #expect(result.unclassified.count == 2)
 }
 
+@Test func bulkTopicDropEditsPlanAtomicallyWithoutMovingFiles() async throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    for course in ["ELEC6008", "ELEC6103"] {
+        try workspace.put("\(course) Lecture 1.md", "one")
+        try workspace.put("\(course) Lecture 2.md", "two")
+    }
+    _ = try workspace.scan()
+    let planID = try workspace.proposePlan()
+    let source = try workspace.rows(
+        "SELECT id,topic_key FROM plan_members WHERE plan_id=? AND group_name='ELEC6008' ORDER BY id",
+        [planID]
+    )
+    let targetKey = try #require(try workspace.rows(
+        "SELECT topic_key FROM plan_members WHERE plan_id=? AND group_name='ELEC6103' LIMIT 1",
+        [planID]
+    ).first)["topic_key"].string
+    let firstID = try #require(source.first)["id"].int
+    let secondID = try #require(source.last)["id"].int
+    let originalKey = source[0]["topic_key"].string
+    let service = AppService(base: workspace.settings)
+
+    var request = ServiceRequest()
+    request.action = "edit"
+    request.planID = planID
+    request.command = "move-members-to-topic-key"
+    request.args = [targetKey, String(firstID), "999999"]
+    #expect(await service.dispatch(request).ok == false)
+    #expect(try workspace.scalar(
+        "SELECT topic_key FROM plan_members WHERE id=?", [firstID]
+    )?.string == originalKey)
+
+    request.args = [targetKey, String(firstID), String(secondID)]
+    #expect(await service.dispatch(request).ok)
+    #expect(try workspace.scalar(
+        "SELECT COUNT(*) FROM plan_members WHERE plan_id=? AND topic_key=?", [planID, targetKey]
+    )?.int == 4)
+    #expect(try workspace.scalar(
+        "SELECT COUNT(*) FROM plan_members WHERE plan_id=? AND auto_eligible=1", [planID]
+    )?.int == 0)
+    #expect(FileManager.default.fileExists(
+        atPath: PyPath.join(workspace.downloads, "ELEC6008 Lecture 1.md").path
+    ))
+    #expect(try Operations.previewMoves(workspace.db, workspace.settings, planID).count == 4)
+
+    var previewRequest = ServiceRequest()
+    previewRequest.action = "preview"
+    previewRequest.planID = planID
+    previewRequest.topicKey = targetKey
+    let preview = await service.dispatch(previewRequest)
+    #expect(preview.ok && preview.moves.count == 4)
+
+    var applyRequest = ServiceRequest()
+    applyRequest.action = "apply"
+    applyRequest.planID = planID
+    applyRequest.confirmed = true
+    applyRequest.moves = Array(preview.moves.prefix(1))
+    #expect(await service.dispatch(applyRequest).ok == false)
+    applyRequest.moves = preview.moves
+    let applied = await service.dispatch(applyRequest)
+    #expect(applied.ok)
+    let batchID = try #require(applied.snapshot?.history.first?.id)
+
+    var undoRequest = ServiceRequest()
+    undoRequest.action = "undo"
+    undoRequest.batchID = batchID
+    undoRequest.confirmed = true
+    #expect(await service.dispatch(undoRequest).ok)
+    #expect(FileManager.default.fileExists(
+        atPath: PyPath.join(workspace.downloads, "ELEC6008 Lecture 1.md").path
+    ))
+}
+
+private final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [ServiceProgress] = []
+    func append(_ value: ServiceProgress) {
+        lock.lock()
+        values.append(value)
+        lock.unlock()
+    }
+    var stages: [ServiceProgress] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+}
+
+@Test func scanReportsRealStagesWithoutPercentages() async throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    try workspace.put("ELEC6008 Lecture 1.md", "one")
+    try workspace.put("ELEC6008 Lecture 2.md", "two")
+    workspace.settings.stableSeconds = 0
+    let recorder = ProgressRecorder()
+    let service = AppService(base: workspace.settings)
+    var request = ServiceRequest()
+    request.action = "scan"
+
+    #expect(await service.dispatch(request, progress: { recorder.append($0) }).ok)
+    #expect(recorder.stages == [
+        .scanningFiles, .extractingContent, .semanticAnalysis, .generatingSuggestions
+    ])
+}
+
+@Test func bulkExcludeRollbackKeepsTheSavedPlanIntact() async throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    let planID = try coursePlan(workspace)
+    let memberIDs = try workspace.rows(
+        "SELECT id FROM plan_members WHERE plan_id=? ORDER BY id", [planID]
+    ).map { $0["id"].int }
+    let service = AppService(base: workspace.settings)
+    var request = ServiceRequest()
+    request.action = "edit"
+    request.planID = planID
+    request.command = "exclude-members"
+    request.args = [String(memberIDs[0]), "999999"]
+    #expect(await service.dispatch(request).ok == false)
+    #expect(try workspace.scalar(
+        "SELECT COUNT(*) FROM plan_members WHERE plan_id=? AND excluded=1", [planID]
+    )?.int == 0)
+
+    request.args = memberIDs.map(String.init)
+    #expect(await service.dispatch(request).ok)
+    #expect(try Operations.previewMoves(workspace.db, workspace.settings, planID).isEmpty)
+    #expect(try workspace.scalar(
+        "SELECT COUNT(*) FROM corrections WHERE action='exclude'", []
+    )?.int == 2)
+}
+
 @Test func confirmedTopicBecomesPrototypeForNewDownload() throws {
     let workspace = try Workspace()
     defer { workspace.close() }

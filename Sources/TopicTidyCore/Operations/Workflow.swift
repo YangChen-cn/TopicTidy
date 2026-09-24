@@ -25,7 +25,8 @@ public enum Workflow {
         _ settings: Settings,
         useSemantic: Bool = true,
         encoder: SemanticEncoder? = nil,
-        translator: TranslationBackend? = nil
+        translator: TranslationBackend? = nil,
+        beforeSaving: (@Sendable () -> Void)? = nil
     ) throws -> ProposalResult {
         // The native encoder is always present on macOS; the field stays for
         // callers that report a degradation.
@@ -43,6 +44,7 @@ public enum Workflow {
             translator: useSemantic ? activeTranslator : nil,
             translationMessages: warnings
         )
+        beforeSaving?()
         let planID = try ClusterEngine.savePlan(db, settings, groups: result.groups,
                                                 unclassified: result.unclassified,
                                                 unclassifiedReasons: result.unclassifiedReasons)

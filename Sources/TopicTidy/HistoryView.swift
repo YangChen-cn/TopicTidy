@@ -8,8 +8,8 @@ struct HistoryView: View {
             LazyVStack(spacing: 0) {
                 if model.snapshot?.history.isEmpty ?? true {
                     VStack(spacing: 9) {
-                        Image(systemName: "clock.arrow.circlepath").font(.system(size: 25, weight: .light))
-                        Text("还没有整理记录").font(.system(size: 13, weight: .medium))
+                        Image(systemName: "clock.arrow.circlepath").font(.title)
+                        Text("还没有整理记录").font(.headline)
                         Text("每次移动都会记录，可在这里撤销。")
                             .font(.caption).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity).padding(.vertical, 40)
@@ -20,7 +20,7 @@ struct HistoryView: View {
                             .foregroundStyle(.secondary).frame(width: 20)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("\(batch.kind == "undo" ? "撤销" : batch.kind == "auto_apply" ? "自动整理" : "手动整理") · #\(batch.id)")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.callout.weight(.medium))
                             Text(Date(timeIntervalSince1970: batch.created_at), format: .dateTime.month().day().hour().minute())
                                 .font(.caption).foregroundStyle(.secondary)
                         }

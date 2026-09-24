@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 struct PreferencesView: View {
     @Bindable var model: AppModel
+    var compact = false
     @State private var scanRoots: [String] = []
     @State private var destination = ""
     @State private var automatic = false
@@ -11,132 +13,171 @@ struct PreferencesView: View {
     @State private var confirmAutomatic = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        sectionTitle("扫描文件夹", icon: "folder.badge.questionmark")
-                        Spacer()
-                        Button("添加…", action: addScanRoots)
-                    }
-                    ForEach(scanRoots, id: \.self) { path in
-                        HStack(spacing: 8) {
-                            Image(systemName: "folder").foregroundStyle(.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(URL(fileURLWithPath: path).lastPathComponent).lineLimit(1)
-                                Text(path).font(.caption2).foregroundStyle(.secondary)
-                                    .lineLimit(1).truncationMode(.middle)
-                            }
-                            Spacer(minLength: 4)
-                            Button {
-                                Task { await saveScanRoots(scanRoots.filter { $0 != path }) }
-                            } label: {
-                                Image(systemName: "minus.circle")
-                            }
-                            .buttonStyle(.borderless)
-                            .accessibilityLabel("移除扫描文件夹 \(path)")
-                            .disabled(scanRoots.count <= 1)
-                        }
-                    }
-                    Text("只扫描顶层文件。更改目录后自动整理会关闭，需重新启用。")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionTitle("整理位置", icon: "folder")
-                    TextField("目标文件夹路径", text: $destination).textFieldStyle(.roundedBorder)
-                    HStack {
-                        Text("所有扫描目录共用此整理位置").font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("选择…", action: chooseFolder)
-                        Button("保存") { Task { await model.perform("preferences", values: ["destination": destination]) } }
-                            .disabled(destination.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                }
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionTitle("自动整理", icon: "checkmark.shield")
-                    Toggle("自动确认高评分主题", isOn: $automatic).toggleStyle(.switch)
-                    if automatic {
-                        HStack {
-                            Text("最低评分").foregroundStyle(.secondary)
-                            Slider(value: $threshold, in: 0.85...1, step: 0.01)
-                            Text("\(Int(threshold * 100))").monospacedDigit().frame(width: 24)
-                        }
-                    }
-                    Text("只移动完整、无冲突的主题。评分为启发式。")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    HStack {
-                        Text(model.snapshot?.preferences.auto_confirm_enabled == true ? "已启用" : "当前关闭")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("保存自动整理") {
-                            if automatic { confirmAutomatic = true }
-                            else { Task { _ = await saveAutomatic() } }
-                        }
-                    }
-                    if confirmAutomatic {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("允许今后自动移动文件？")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text("这是一项持续授权。每日任务会移动符合条件的完整主题，并保留撤销记录。")
-                                .font(.caption).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                            HStack {
-                                Spacer()
-                                Button("取消") {
-                                    confirmAutomatic = false
-                                    automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
-                                }
-                                Button("启用自动整理") {
-                                    Task {
-                                        if await saveAutomatic() { confirmAutomatic = false }
-                                    }
-                                }.buttonStyle(.borderedProminent)
-                            }
-                        }
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
-                    }
-                }
-                Divider()
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionTitle("每日扫描", icon: "clock")
-                    Toggle("每天扫描一次", isOn: $daily).toggleStyle(.switch)
-                    HStack {
-                        if daily {
-                            TextField("09:00", text: $at).textFieldStyle(.roundedBorder).frame(width: 62)
-                                .accessibilityLabel("每日扫描时间，小时和分钟")
-                        }
-                        Text(scheduleLabel).font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("保存任务") {
-                            Task { await model.perform("schedule", values: ["enabled": daily, "at": at]) }
-                        }
-                    }
-                    Text("\(daily ? "按本机时间执行。" : "")启用自动整理后，每日扫描也会移动符合条件的文件。后台任务使用 TopicTidy 内置的 tt。")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-            }.padding(16)
+        Group {
+            if compact { compactBody }
+            else { settingsBody }
         }
-        .font(.system(size: 12)).controlSize(.small).disabled(model.busy)
+        .controlSize(compact ? .small : .regular)
+        .disabled(model.busy)
         .task {
             await model.perform("status")
-            if let s = model.snapshot {
-                scanRoots = s.preferences.scan_roots
-                destination = s.preferences.destination
-                automatic = s.preferences.auto_confirm_enabled
-                threshold = s.preferences.auto_confirm_threshold
-                daily = s.schedule.state != "not_configured"
-                at = s.schedule.time ?? "09:00"
+            loadPreferences()
+        }
+        .alert("启用自动整理？", isPresented: $confirmAutomatic) {
+            Button("取消", role: .cancel) {
+                automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
             }
+            Button("明确授权并启用") {
+                Task {
+                    if !(await saveAutomatic()) {
+                        automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
+                    }
+                }
+            }
+        } message: {
+            Text("这是持续授权。每日任务可自动移动达到阈值的完整、无冲突主题；每次移动都会记录，之后可撤销。")
         }
     }
 
-    private func sectionTitle(_ text: String, icon: String) -> some View {
-        Label(text, systemImage: icon).font(.system(size: 12, weight: .semibold))
+    /// The dedicated Settings window keeps one native, scrollable Form.
+    private var settingsBody: some View {
+        Form {
+            Section("扫描目录") { scanRootRows }
+            Section("整理目录") { destinationRows }
+            Section("自动整理") { automationRows }
+            Section("每日扫描") { scheduleRows }
+        }
+        .formStyle(.grouped)
     }
+
+    /// The menu bar panel uses one scroll surface, with every setting visible
+    /// in document order instead of another layer of tabs or nested lists.
+    private var compactBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                compactSection("扫描目录") { scanRootRows }
+                compactSection("整理目录") { destinationRows }
+                compactSection("自动整理") { automationRows }
+                compactSection("每日扫描") { scheduleRows }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 18)
+        }
+    }
+
+    private func compactSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.headline)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var scanRootRows: some View {
+        ForEach(scanRoots, id: \.self) { path in
+            HStack(spacing: 10) {
+                Image(systemName: "folder").foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(URL(fileURLWithPath: path).lastPathComponent)
+                    Text(path).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 4)
+                Button {
+                    Task { await saveScanRoots(scanRoots.filter { $0 != path }) }
+                } label: {
+                    Label("移除扫描目录 \(path)", systemImage: "minus.circle")
+                        .labelStyle(.iconOnly)
+                }
+                .disabled(scanRoots.count <= 1)
+            }
+        }
+        Button("添加扫描目录…", systemImage: "plus", action: addScanRoots)
+        Text("只扫描顶层文件。更改目录会关闭自动整理，需要重新授权。")
+            .font(.caption).foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var destinationRows: some View {
+        Text("目标文件夹路径").font(.subheadline.weight(.medium))
+        TextField("目标文件夹路径", text: $destination)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel("整理目录路径")
+        HStack {
+            Button("选择目录…", action: chooseFolder)
+            Spacer()
+            Button("保存整理目录") {
+                Task {
+                    if await model.perform("preferences", values: ["destination": destination]) {
+                        destination = model.snapshot?.preferences.destination ?? destination
+                    }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(destination.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        Text("所有扫描目录共用这个位置；已有方案仍使用保存时的目录。")
+            .font(.caption).foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var automationRows: some View {
+        Toggle("自动确认高评分主题", isOn: $automatic)
+        if automatic {
+            LabeledContent("最低评分") {
+                HStack {
+                    Slider(value: $threshold, in: 0.85...1, step: 0.01)
+                        .accessibilityLabel("自动整理最低评分")
+                    Text("\(Int(threshold * 100))")
+                        .monospacedDigit().frame(minWidth: 28, alignment: .trailing)
+                }
+            }
+        }
+        LabeledContent("状态") {
+            Text(model.snapshot?.preferences.auto_confirm_enabled == true ? "已启用" : "当前关闭")
+                .foregroundStyle(.secondary)
+        }
+        Text("只移动完整、无冲突的主题。评分为启发式，建议先核对文件。")
+            .font(.caption).foregroundStyle(.secondary)
+        HStack {
+            Spacer()
+            Button("保存自动整理") {
+                if automatic { confirmAutomatic = true }
+                else { Task { _ = await saveAutomatic() } }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    @ViewBuilder
+    private var scheduleRows: some View {
+        Toggle("每天扫描一次", isOn: $daily)
+        if daily {
+            TextField("执行时间（HH:mm）", text: $at)
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel("每日扫描时间，小时和分钟")
+        }
+        LabeledContent("状态") {
+            Text(scheduleLabel).foregroundStyle(.secondary)
+        }
+        Text("按本机时间执行。启用自动整理后，每日扫描也会移动符合条件的文件。")
+            .font(.caption).foregroundStyle(.secondary)
+        HStack {
+            Spacer()
+            Button("保存每日任务") {
+                Task { await model.perform("schedule", values: ["enabled": daily, "at": at]) }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
     private var scheduleLabel: String {
         switch model.snapshot?.schedule.state {
         case "loaded": "已启用"
@@ -144,6 +185,17 @@ struct PreferencesView: View {
         default: "未设置"
         }
     }
+
+    private func loadPreferences() {
+        guard let snapshot = model.snapshot else { return }
+        scanRoots = snapshot.preferences.scan_roots
+        destination = snapshot.preferences.destination
+        automatic = snapshot.preferences.auto_confirm_enabled
+        threshold = snapshot.preferences.auto_confirm_threshold
+        daily = snapshot.schedule.state != "not_configured"
+        at = snapshot.schedule.time ?? "09:00"
+    }
+
     private func chooseFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -151,6 +203,7 @@ struct PreferencesView: View {
         panel.canCreateDirectories = true
         if panel.runModal() == .OK, let url = panel.url { destination = url.path }
     }
+
     private func addScanRoots() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -160,14 +213,16 @@ struct PreferencesView: View {
             Task { await saveScanRoots(scanRoots + panel.urls.map(\.path)) }
         }
     }
+
     private func saveScanRoots(_ paths: [String]) async {
         if await model.perform("preferences", values: ["scan_roots": paths]) {
-            scanRoots = model.snapshot?.preferences.scan_roots ?? paths
-            automatic = model.snapshot?.preferences.auto_confirm_enabled ?? false
-            confirmAutomatic = false
+            loadPreferences()
         }
     }
+
     private func saveAutomatic() async -> Bool {
-        await model.perform("preferences", values: ["enabled": automatic, "threshold": threshold])
+        let saved = await model.perform("preferences", values: ["enabled": automatic, "threshold": threshold])
+        if saved { loadPreferences() }
+        return saved
     }
 }

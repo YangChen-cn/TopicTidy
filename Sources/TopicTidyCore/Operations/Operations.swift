@@ -495,6 +495,29 @@ public enum Operations {
                 [identity, topic, planID, try intArgument(args[0])]
             )
             action = "成员 \(args[0]) 已移至 \(topic)"
+        case ("move-to-topic-key", 2):
+            guard let planID else { throw OrganizerError("方案已执行或不存在，请重新扫描生成建议") }
+            let memberID = try intArgument(args[0])
+            guard let target = try db.connection.query(
+                "SELECT group_name FROM plan_members WHERE plan_id=? AND topic_key=? AND group_name IS NOT NULL LIMIT 1",
+                [planID, args[1]]
+            ).first else { throw OrganizerError("目标主题已变化，请重新选择") }
+            guard let source = try db.connection.query(
+                "SELECT source_fingerprint FROM plan_members WHERE plan_id=? AND id=? AND applied=0",
+                [planID, memberID]
+            ).first else { throw OrganizerError("成员不存在或已经整理") }
+            let topic = target["group_name"].string
+            correctionFingerprint = source["source_fingerprint"].string
+            correctionTopic = topic
+            try db.connection.run(
+                """
+                UPDATE plan_members SET topic_key=?,group_name=?,destination=NULL,excluded=0,
+                  review_required=1,auto_eligible=0,legacy_confidence=0
+                WHERE plan_id=? AND id=?
+                """,
+                [args[1], topic, planID, memberID]
+            )
+            action = "成员 \(memberID) 已移至 \(topic)"
         case ("merge", let count) where count >= 2:
             guard let planID else { throw OrganizerError("方案已执行或不存在，请重新扫描生成建议") }
             let target = try safeTopicName(args[args.count - 1])
@@ -548,7 +571,7 @@ public enum Operations {
             throw OrganizerError("无法识别命令或参数数量不正确")
         }
 
-        if let planID, ["move", "merge", "split"].contains(command) {
+        if let planID, ["move", "move-to-topic-key", "merge", "split"].contains(command) {
             try db.connection.run(
                 "UPDATE plan_members SET review_required=1,auto_eligible=0,legacy_confidence=0 WHERE plan_id=?",
                 [planID]

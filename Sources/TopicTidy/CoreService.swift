@@ -10,8 +10,11 @@ import TopicTidyCore
 actor CoreService {
     private let service = AppService()
 
-    func dispatch(_ request: ServiceRequest) async -> ServiceResponse {
-        await service.dispatch(request)
+    func dispatch(
+        _ request: ServiceRequest,
+        progress: (@Sendable (ServiceProgress) -> Void)? = nil
+    ) async -> ServiceResponse {
+        await service.dispatch(request, progress: progress)
     }
 }
 

@@ -7,9 +7,9 @@ struct EvidenceList: View {
             ForEach(evidence) { item in
                 HStack(alignment: .top, spacing: 7) {
                     Text(item.strength == "strong" ? "强" : item.strength == "weak" ? "弱" : "无")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(item.strength == "strong" ? Color.accentColor : Color.secondary)
-                        .frame(width: 18)
+                        .frame(minWidth: 22)
                     Text(item.detail).font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }

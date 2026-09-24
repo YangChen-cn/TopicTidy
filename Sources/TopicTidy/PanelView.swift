@@ -7,6 +7,7 @@ struct PanelView: View {
     @State private var previewMoves: [Move] = []
     @State private var showDismissed = false
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private var groups: [TopicGroup] { TopicGroup.make(model.snapshot?.members ?? []) }
     private var dismissed: [DismissedGroup] { model.snapshot?.dismissed ?? [] }
     private var movableCount: Int { model.snapshot?.members.filter { $0.topic != nil && !$0.excluded && !$0.applied }.count ?? 0 }
@@ -22,17 +23,17 @@ struct PanelView: View {
                     Text("记录").tag("history")
                     Text("设置").tag("settings")
                 }.labelsHidden().pickerStyle(.segmented).padding(.horizontal, 14).padding(.bottom, 12)
-                Divider()
                 switch tab {
-                case "settings": PreferencesView(model: model).frame(height: 430)
+                case "settings": PreferencesView(model: model, compact: true).frame(height: 430)
                 case "history": HistoryView(model: model).frame(height: model.snapshot?.history.isEmpty ?? true ? 180 : 330)
                 default: review
                 }
                 footer
             }
         }
-        .font(.system(size: 13)).controlSize(.small)
-        .frame(width: 380).fixedSize(horizontal: false, vertical: true)
+        .controlSize(.small)
+        .frame(width: dynamicTypeSize.isAccessibilitySize ? 460 : 340)
+        .fixedSize(horizontal: false, vertical: true)
         .task { await model.perform("status") }
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("好") { model.error = nil }
@@ -42,9 +43,9 @@ struct PanelView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Image(nsImage: NSApplication.shared.applicationIconImage).resizable().frame(width: 26, height: 26)
-            Text("TopicTidy").font(.system(size: 14, weight: .semibold))
+            Text("TopicTidy").font(.headline)
             Spacer()
-            if model.busy { ProgressView().controlSize(.mini) }
+            if model.busy { ProgressView().controlSize(.mini).accessibilityLabel("正在处理") }
             Button { openWindow(id: "organizer"); NSApplication.shared.activate() } label: {
                 Label("打开窗口", systemImage: "arrow.up.left.and.arrow.down.right")
             }.labelStyle(.iconOnly).buttonStyle(.borderless).help("打开完整窗口")
@@ -62,8 +63,8 @@ struct PanelView: View {
         VStack(spacing: 0) {
             if groups.isEmpty {
                 VStack(spacing: 10) {
-                    Image(systemName: "tray.and.arrow.down").font(.system(size: 28, weight: .light)).foregroundStyle(.secondary)
-                    Text("让文件各归其处").font(.system(size: 14, weight: .medium))
+                    Image(systemName: "tray.and.arrow.down").font(.title).foregroundStyle(.secondary)
+                    Text("让文件各归其处").font(.headline)
                     Text("发现相同课程和主题，确认后再整理。")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("扫描文件夹") { Task { await model.perform("scan") } }
@@ -75,27 +76,31 @@ struct PanelView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("重新扫描", systemImage: "arrow.clockwise") { Task { await model.perform("scan") } }
-                        .buttonStyle(.borderless).disabled(model.busy)
+                        .labelStyle(.iconOnly).buttonStyle(.borderless)
+                        .help("重新扫描文件夹").disabled(model.busy)
                 }.padding(.horizontal, 14).padding(.vertical, 10)
                 ScrollView {
-                    LazyVStack(spacing: 7) {
+                    LazyVStack(spacing: 4) {
                         ForEach(groups) { group in
                             TopicGroupView(group: group, model: model) { preview($0) }
                         }
                         if !dismissed.isEmpty { dismissedSection }
                     }.padding(.horizontal, 12).padding(.bottom, 12)
-                }.frame(height: min(320, max(150, CGFloat(groups.count + (dismissed.isEmpty ? 0 : 1)) * 64)))
+                }.frame(height: min(300, max(120, CGFloat(groups.count + (dismissed.isEmpty ? 0 : 1)) * 55)))
                 HStack {
                     Text("确认前不移动文件").font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("整理全部 \(movableCount) 个…") {
+                    Button("预览整理…") {
                         Task {
                             if await model.perform("preview") {
                                 previewMoves = model.moves
                                 showPreview = true
                             }
                         }
-                    }.buttonStyle(.borderedProminent).disabled(model.busy || movableCount == 0)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .disabled(model.busy || movableCount == 0)
                 }.padding(12)
             }
         }
@@ -108,7 +113,7 @@ struct PanelView: View {
                 ForEach(dismissed) { group in
                     HStack {
                         Label(group.name, systemImage: "xmark.circle")
-                            .font(.system(size: 12)).lineLimit(1)
+                            .font(.callout).lineLimit(1)
                         Spacer(minLength: 4)
                         Text("\(group.files.count)").font(.caption).foregroundStyle(.secondary)
                         Button("恢复") { Task { await model.restoreDismissed(group.name) } }
@@ -118,10 +123,9 @@ struct PanelView: View {
             }.padding(.top, 4)
         } label: {
             Label("已取消 \(dismissed.count)", systemImage: "xmark.circle")
-                .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+                .font(.callout.weight(.medium)).foregroundStyle(.secondary)
         }
-        .padding(10)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, 8)
     }
 
     private func preview(_ group: TopicGroup) {
@@ -135,11 +139,14 @@ struct PanelView: View {
 
     private var footer: some View {
         VStack(spacing: 0) {
-            Divider()
             HStack(spacing: 6) {
                 Image(systemName: model.busy ? "hourglass" : "lock.shield").font(.caption2)
-                Text(model.busy ? "正在处理…" : model.message)
-                    .font(.caption2).lineLimit(1).truncationMode(.tail).help(model.message)
+                if model.busy {
+                    TaskProgressView(progress: model.progress, compact: true)
+                } else {
+                    Text(model.message)
+                        .font(.caption2).lineLimit(1).truncationMode(.tail).help(model.message)
+                }
                 Spacer(minLength: 0)
             }.foregroundStyle(.secondary).padding(.horizontal, 14).padding(.vertical, 9)
         }

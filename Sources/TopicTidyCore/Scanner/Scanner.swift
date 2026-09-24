@@ -57,7 +57,8 @@ public enum Scanner {
         _ db: Database,
         _ settings: Settings,
         waitForStability: Bool = false,
-        registry: ExtractorRegistry = .default()
+        registry: ExtractorRegistry = .default(),
+        onExtraction: (@Sendable () -> Void)? = nil
     ) throws -> ScanStats {
         var stats = ScanStats()
         var seen: Set<String> = []
@@ -68,6 +69,8 @@ public enum Scanner {
             for path in paths { initialStats[path.path] = FileStat(path: path.path) }
             if settings.stableSeconds > 0 { Thread.sleep(forTimeInterval: settings.stableSeconds) }
         }
+
+        onExtraction?()
 
         for path in paths {
             do {

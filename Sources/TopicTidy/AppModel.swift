@@ -4,9 +4,11 @@ import TopicTidyCore
 @MainActor @Observable final class AppModel {
     var snapshot: Snapshot?
     var busy = false
+    var progress: ServiceProgress?
     var message = "本机分析 · 确认后移动"
     var error: String?
     var moves: [Move] = []
+    private var activeOperationID: UUID?
     private let service = CoreService()
 
     @discardableResult
@@ -14,12 +16,21 @@ import TopicTidyCore
         guard !busy else { return false }
         error = nil
         busy = true
-        defer { busy = false }
+        progress = nil
+        let operationID = UUID()
+        activeOperationID = operationID
+        defer { busy = false; progress = nil; activeOperationID = nil }
         var request = ServiceRequest()
         apply(values, to: &request)
         request.action = action
         if request.planID == nil, let plan = snapshot?.plan_id { request.planID = plan }
-        let response = await service.dispatch(request)
+        let response = await service.dispatch(request) { stage in
+            Task { @MainActor in
+                guard self.activeOperationID == operationID else { return }
+                if let current = self.progress, stage.order < current.order { return }
+                self.progress = stage
+            }
+        }
         guard response.ok else {
             error = response.error ?? "操作失败"
             return false
@@ -51,7 +62,8 @@ import TopicTidyCore
         await perform("apply", values: ["confirmed": true, "moves": moves])
     }
 
-    func edit(_ command: String, _ args: [String]) async {
+    @discardableResult
+    func edit(_ command: String, _ args: [String]) async -> Bool {
         await perform("edit", values: ["command": command, "args": args])
     }
 
@@ -63,5 +75,30 @@ import TopicTidyCore
     func preview(topicKey: String) async -> [Move]? {
         guard await perform("preview", values: ["topic_key": topicKey]) else { return nil }
         return moves
+    }
+
+    /// Plan edits never touch files. AppService applies the whole selection in
+    /// one database transaction, so a failed member does not leave a partial edit.
+    func moveMembers(_ ids: [Int], to topicKey: String) async {
+        let selected = Set(ids).sorted()
+        guard !selected.isEmpty else { return }
+        await edit("move-members-to-topic-key", [topicKey] + selected.map(String.init))
+    }
+
+    func excludeMembers(_ ids: [Int]) async {
+        let selected = Set(ids).sorted()
+        guard !selected.isEmpty else { return }
+        await edit("exclude-members", selected.map(String.init))
+    }
+}
+
+private extension ServiceProgress {
+    var order: Int {
+        switch self {
+        case .scanningFiles: 0
+        case .extractingContent: 1
+        case .semanticAnalysis: 2
+        case .generatingSuggestions: 3
+        }
     }
 }

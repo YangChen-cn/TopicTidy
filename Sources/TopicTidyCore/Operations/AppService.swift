@@ -166,6 +166,14 @@ public struct ServiceResponse: Sendable {
     }
 }
 
+/// Observable milestones for the native client. These are stages, not percentages.
+public enum ServiceProgress: Sendable, Equatable {
+    case scanningFiles
+    case extractingContent
+    case semanticAnalysis
+    case generatingSuggestions
+}
+
 public actor AppService {
     private let base: Settings
 
@@ -257,17 +265,23 @@ public actor AppService {
     }
 
     /// One GUI request: same actions, messages and guards as the JSON bridge.
-    public func dispatch(_ request: ServiceRequest) -> ServiceResponse {
+    public func dispatch(
+        _ request: ServiceRequest,
+        progress: (@Sendable (ServiceProgress) -> Void)? = nil
+    ) -> ServiceResponse {
         do {
             return try AppLock.withLock(base.dataDir) {
-                try perform(request)
+                try perform(request, progress: progress)
             }
         } catch {
             return ServiceResponse(ok: false, error: String(describing: error))
         }
     }
 
-    private func perform(_ request: ServiceRequest) throws -> ServiceResponse {
+    private func perform(
+        _ request: ServiceRequest,
+        progress: (@Sendable (ServiceProgress) -> Void)?
+    ) throws -> ServiceResponse {
         let db = try Database(path: base.database)
         defer { db.close() }
         _ = try db.recoverInterrupted()
@@ -288,8 +302,14 @@ public actor AppService {
 
         switch request.action {
         case "scan":
-            let stats = try Scanner.scan(db, settings, waitForStability: true)
-            let result = try Workflow.createProposal(db, settings, useSemantic: request.semantic)
+            progress?(.scanningFiles)
+            let stats = try Scanner.scan(db, settings, waitForStability: true) {
+                progress?(.extractingContent)
+            }
+            if request.semantic { progress?(.semanticAnalysis) }
+            let result = try Workflow.createProposal(db, settings, useSemantic: request.semantic) {
+                progress?(.generatingSuggestions)
+            }
             planID = result.planID
             var text = "扫描完成，更新 \(stats.scanned) 个文件，提取错误 \(stats.errors) 个"
             for warning in [result.semanticError].compactMap({ $0 }) + result.translationWarnings {
@@ -298,8 +318,33 @@ public actor AppService {
             message = text
         case "edit":
             guard let command = request.command else { throw OrganizerError("未知操作") }
-            message = try Operations.editPlan(db, planID, command: command, args: request.args,
-                                              organizedDir: settings.organizedDir)
+            if command == "move-members-to-topic-key" {
+                guard request.args.count >= 2 else { throw OrganizerError("请选择文件和目标主题") }
+                let topicKey = request.args[0]
+                let memberIDs = Array(request.args.dropFirst())
+                guard Set(memberIDs).count == memberIDs.count else { throw OrganizerError("文件选择重复") }
+                try db.withTransaction { database in
+                    for memberID in memberIDs {
+                        _ = try Operations.editPlan(database, planID, command: "move-to-topic-key",
+                                                    args: [memberID, topicKey],
+                                                    organizedDir: settings.organizedDir)
+                    }
+                }
+                message = "已将 \(memberIDs.count) 个文件移至主题"
+            } else if command == "exclude-members" {
+                guard !request.args.isEmpty else { throw OrganizerError("请选择文件") }
+                guard Set(request.args).count == request.args.count else { throw OrganizerError("文件选择重复") }
+                try db.withTransaction { database in
+                    for memberID in request.args {
+                        _ = try Operations.editPlan(database, planID, command: "exclude",
+                                                    args: [memberID], organizedDir: settings.organizedDir)
+                    }
+                }
+                message = "已排除 \(request.args.count) 个文件"
+            } else {
+                message = try Operations.editPlan(db, planID, command: command, args: request.args,
+                                                  organizedDir: settings.organizedDir)
+            }
         case "preview":
             var memberIDs: Set<Int>?
             if let topicKey = request.topicKey, let planID {

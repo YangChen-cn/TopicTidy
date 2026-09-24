@@ -8,7 +8,7 @@ struct MovePreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("整理 \(moves.count) 个文件").font(.system(size: 15, weight: .semibold))
+                Text("整理 \(moves.count) 个文件").font(.headline)
                 Text("核对以下位置，整理后可在记录中撤销。")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -17,7 +17,7 @@ struct MovePreview: View {
                     ForEach(moves) { move in
                         VStack(alignment: .leading, spacing: 5) {
                             Label(URL(fileURLWithPath: move.source).lastPathComponent, systemImage: "doc")
-                                .font(.system(size: 12, weight: .medium)).lineLimit(2)
+                                .font(.callout.weight(.medium)).lineLimit(2)
                             Text(move.source).foregroundStyle(.secondary)
                             Label(move.destination, systemImage: "arrow.turn.down.right")
                             if move.stale { Text("文件已改变，将跳过").foregroundStyle(.orange) }
