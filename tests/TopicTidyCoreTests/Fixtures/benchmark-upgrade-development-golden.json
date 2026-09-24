@@ -1,0 +1,28 @@
+{
+  "pairwise_f1": 1,
+  "pairwise_precision": 1,
+  "pairwise_recall": 1,
+  "predicted_clusters": {
+    "ELEC7301": [
+      "Atlas Research Addendum.md",
+      "Atlas Research Design.md",
+      "Harbor Research Field.md"
+    ],
+    "ELEC7302": [
+      "ELEC7302 Research Design.md",
+      "ELEC7302 Research Field.md"
+    ],
+    "Grid Solar": [
+      "Grid Solar Tutorial Two.md",
+      "Solar Grid Training One.md"
+    ],
+    "电池热安全讲义": [
+      "Battery Safety Brief.md",
+      "电池热安全讲义.md"
+    ]
+  },
+  "predicted_unclassified": [
+    "oven recipe.md",
+    "tax invoice.md"
+  ]
+}

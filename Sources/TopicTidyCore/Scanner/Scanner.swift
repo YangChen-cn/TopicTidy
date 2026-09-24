@@ -144,6 +144,7 @@ public enum Scanner {
                              result.truncated ? 1 : 0, result.error]
                         )
                         try database.connection.run("DELETE FROM semantic_pivots WHERE file_id=?", [fileId])
+                        try database.connection.run("DELETE FROM semantic_views WHERE file_id=?", [fileId])
                         if result.error != nil { stats.errors += 1 }
                     }
                 }

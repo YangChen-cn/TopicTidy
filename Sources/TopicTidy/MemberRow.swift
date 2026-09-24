@@ -14,6 +14,9 @@ struct MemberRow: View {
                 Text(member.name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle).help(member.name)
                 Text(member.applied ? "已整理" : member.excluded ? "已取消" : URL(fileURLWithPath: member.name).pathExtension.uppercased())
                     .font(.caption).foregroundStyle(.secondary)
+                if !member.memberReason.isEmpty, !member.applied {
+                    Text(member.memberReason).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
                 ForEach(member.conflicts, id: \.self) { Text($0).font(.caption).foregroundStyle(.orange) }
             }
             Spacer()

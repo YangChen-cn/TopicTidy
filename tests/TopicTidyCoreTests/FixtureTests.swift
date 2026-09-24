@@ -10,16 +10,17 @@ import Testing
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .deletingLastPathComponent()
-    for name in ["benchmark_core", "holdout_unseen"] {
+    for name in ["benchmark_core", "holdout_unseen", "upgrade_development", "upgrade_holdout"] {
         let path = root.appendingPathComponent("Resources/fixtures/\(name).json")
         let contents = try String(contentsOf: path, encoding: .utf8)
-        let embedded = FixtureData.json(for: name == "benchmark_core" ? .core : .holdout)
+        let identifier = try #require(FixtureData.Name(rawValue: name))
+        let embedded = FixtureData.json(for: identifier)
         #expect(embedded == contents)
     }
 }
 
 @Test func benchmarkFixtureLoads() throws {
-    let names: [FixtureData.Name] = [.core, .holdout]
+    let names: [FixtureData.Name] = [.core, .holdout, .upgradeDevelopment, .upgradeHoldout]
     for fixture in names {
         let data = try #require(FixtureData.json(for: fixture).data(using: .utf8))
         let parsed = try Benchmark.loadFixture(data)

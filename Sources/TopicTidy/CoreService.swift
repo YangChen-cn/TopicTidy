@@ -56,7 +56,9 @@ extension Member {
             excluded: member.excluded,
             applied: member.applied,
             evidence: member.evidence.map { Evidence(kind: $0.kind, strength: $0.strength, detail: $0.detail) },
-            conflicts: member.conflicts
+            conflicts: member.conflicts,
+            reviewRequired: member.reviewRequired,
+            memberReason: member.memberReason
         )
     }
 }

@@ -78,6 +78,8 @@ jobs:
         run: |
           .build/release/tt benchmark --json --min-f1 1.0
           .build/release/tt benchmark Resources/fixtures/holdout_unseen.json --json --min-f1 0.94
+          .build/release/tt benchmark Resources/fixtures/upgrade_development.json --json --min-f1 1.0
+          .build/release/tt benchmark Resources/fixtures/upgrade_holdout.json --json --min-f1 1.0
 
       - name: Build app and DMG
         run: scripts/build_app.sh --skip-build

@@ -2,11 +2,25 @@ import CryptoKit
 import Foundation
 
 public enum Benchmark {
+    public enum Variant: String, CaseIterable {
+        case legacy, expansionOnly = "expansion-only", multiViewOnly = "multiview-only", upgraded
+
+        var algorithm: ClusterEngine.Algorithm {
+            switch self {
+            case .legacy: .legacy
+            case .expansionOnly: .expansionOnly
+            case .multiViewOnly: .multiViewOnly
+            case .upgraded: .upgraded
+            }
+        }
+    }
     /// Packaged fixture names. The JSON lives in `Resources/fixtures` and is
     /// embedded so the app and CLI stay relocatable without a resource bundle.
     public enum Fixture: String, CaseIterable {
         case core = "benchmark_core"
         case holdout = "holdout_unseen"
+        case upgradeDevelopment = "upgrade_development"
+        case upgradeHoldout = "upgrade_holdout"
     }
 
     public static func defaultFixtureData() throws -> Data {
@@ -37,7 +51,8 @@ public enum Benchmark {
         return fixture
     }
 
-    public static func run(fixture data: Data, fixturePath: String = "builtin") throws -> [String: Any] {
+    public static func run(fixture data: Data, fixturePath: String = "builtin",
+                           variant: Variant = .upgraded) throws -> [String: Any] {
         let fixture = try loadFixture(data)
         let documents = fixture["documents"] as? [[String: Any]] ?? []
         let expectedClusters = fixture["expected_clusters"] as? [String: [String]] ?? [:]
@@ -99,8 +114,36 @@ public enum Benchmark {
                          Data(JSONValue.dumps(pivot).utf8)]
                     )
                 }
+                for (field, kind, space) in [
+                    ("native_views", "native", document["native_space"] as? String ?? "benchmark-multilingual"),
+                    ("pivot_views", "pivot", "en"),
+                ] {
+                    let views = document[field] as? [String: [Double]] ?? [:]
+                    for view in SemanticText.views where views[view] != nil {
+                        let native = kind == "native"
+                        let translated = document["translated_content"] as? String ?? content
+                        try db.connection.run(
+                            """
+                            INSERT INTO semantic_views(file_id,fingerprint,view,kind,semantic_text,translated_text,
+                              text_version,encoder_version,translation_version,source_language,embedding,embedding_space)
+                            VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                            """,
+                            [fileID, digest, view, kind,
+                             SemanticText.viewText(IndexedFile(
+                                id: fileID, path: path, name: name, fileExtension: "", size: 0,
+                                createdAt: 0, modifiedAt: 0, device: 0, inode: 0, fingerprint: digest,
+                                sourceURLs: [], text: content, title: document["title"] as? String ?? "",
+                                keywords: TextFeatures.keywords(content), summary: Py.prefix(content, 600),
+                                extractionError: nil), view: view),
+                             native ? nil : translated, SemanticText.viewVersion, "benchmark-fixed",
+                             native ? nil : "benchmark-translation",
+                             document["native_space"] as? String ?? "benchmark-multilingual",
+                             Data(JSONValue.dumps(views[view]!).utf8), space]
+                        )
+                    }
+                }
             }
-            let result = try ClusterEngine.cluster(db, settings)
+            let result = try ClusterEngine.cluster(db, settings, algorithm: variant.algorithm)
             predicted = result.groups
             unclassified = result.unclassified
         } catch {
@@ -125,12 +168,20 @@ public enum Benchmark {
 
         var predictedClusters: [String: [String]] = [:]
         for group in predicted {
-            predictedClusters[group.displayName] = group.files.map(\.name).sorted(by: Py.less)
+            let key = predictedClusters[group.displayName] == nil
+                ? group.displayName : "\(group.displayName) [\(group.topicKey)]"
+            predictedClusters[key] = group.files.map(\.name).sorted(by: Py.less)
         }
         return [
             "fixture": fixturePath,
+            "variant": variant.rawValue,
             "expected_clusters": expectedClusters.mapValues { $0.sorted(by: Py.less) },
             "predicted_clusters": predictedClusters,
+            "predicted_groups": predicted.map { group in
+                ["topic_id": group.topicKey,
+                 "display_name": group.displayName,
+                 "files": group.files.map(\.name).sorted(by: Py.less)] as [String: Any]
+            },
             "expected_unclassified": expectedUnclassified.sorted(by: Py.less),
             "predicted_unclassified": predictedUnclassified,
             "pairwise_precision": rounded(precision, 4),
@@ -141,15 +192,15 @@ public enum Benchmark {
         ]
     }
 
-    public static func run(fixturePath: String?) throws -> [String: Any] {
+    public static func run(fixturePath: String?, variant: Variant = .upgraded) throws -> [String: Any] {
         if let fixturePath {
             let url = Paths.resolve(Paths.expand(fixturePath))
             guard let data = try? Data(contentsOf: url) else {
                 throw OrganizerError("找不到 fixture：\(fixturePath)")
             }
-            return try run(fixture: data, fixturePath: url.path)
+            return try run(fixture: data, fixturePath: url.path, variant: variant)
         }
-        return try run(fixture: try defaultFixtureData())
+        return try run(fixture: try defaultFixtureData(), variant: variant)
     }
 }
 

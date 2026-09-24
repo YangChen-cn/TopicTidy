@@ -8,6 +8,7 @@ public struct ProposalResult: Sendable {
     public var translationVersion: String?
     public var semanticError: String?
     public var translationWarnings: [String] = []
+    public var unclassifiedReasons: [Int: String] = [:]
 }
 
 public struct AutoConfirmResult: Sendable {
@@ -43,8 +44,9 @@ public enum Workflow {
             translationMessages: warnings
         )
         let planID = try ClusterEngine.savePlan(db, settings, groups: result.groups,
-                                                unclassified: result.unclassified)
-        return ProposalResult(
+                                                unclassified: result.unclassified,
+                                                unclassifiedReasons: result.unclassifiedReasons)
+        var proposal = ProposalResult(
             planID: planID,
             groups: result.groups,
             unclassified: result.unclassified,
@@ -53,6 +55,8 @@ public enum Workflow {
             semanticError: semanticError,
             translationWarnings: warnings.value
         )
+        proposal.unclassifiedReasons = result.unclassifiedReasons
+        return proposal
     }
 
     /// Confirm and apply only complete, conflict-free groups above the threshold.
@@ -64,7 +68,8 @@ public enum Workflow {
     ) throws -> AutoConfirmResult {
         let rows = try db.connection.query(
             """
-            SELECT topic_key,group_name,confidence,conflicts,evidence,excluded
+            SELECT topic_key,group_name,confidence,conflicts,evidence,excluded,
+                   review_required,auto_eligible,legacy_confidence
             FROM plan_members WHERE plan_id=? AND group_name IS NOT NULL
             """,
             [planID]
@@ -83,7 +88,10 @@ public enum Workflow {
             let members = grouped[key]!
             let complete = members.allSatisfy { $0["excluded"].int == 0 }
             let conflictFree = members.allSatisfy { JSONValue.array($0["conflicts"].string).isEmpty }
-            let confident = (members.map { $0["confidence"].double }.min() ?? 0) >= threshold
+            let confident = (members.map { $0["legacy_confidence"].double }.min() ?? 0) >= threshold
+            let oldAlgorithmEligible = members.allSatisfy {
+                $0["auto_eligible"].int != 0 && $0["review_required"].int == 0
+            }
             let evidence = members.flatMap { JSONValue.dictionaryArray($0["evidence"].string) }
             let usesDocumentLinks = evidence.contains {
                 ($0["kind"] as? String) == "document_links" && ($0["strength"] as? String) == "strong"
@@ -93,7 +101,7 @@ public enum Workflow {
                     && ($0["strength"] as? String) == "strong"
             }
             let documentLinksSafe = !usesDocumentLinks || independentStrong
-            if complete && conflictFree && confident && documentLinksSafe {
+            if complete && conflictFree && confident && oldAlgorithmEligible && documentLinksSafe {
                 eligibleKeys.insert(key)
             }
         }

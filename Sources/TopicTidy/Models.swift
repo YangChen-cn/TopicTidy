@@ -21,6 +21,8 @@ struct Member: Identifiable, Sendable {
     var applied: Bool
     var evidence: [Evidence]
     var conflicts: [String]
+    var reviewRequired: Bool = false
+    var memberReason: String = ""
 }
 
 struct Batch: Identifiable, Sendable {

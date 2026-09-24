@@ -165,6 +165,22 @@ enum ClusterMath {
         return max(0.0, min(1.0, total))
     }
 
+    static func multiView(_ left: IndexedFile, _ right: IndexedFile, crossLanguage: Bool) -> (Double, Int) {
+        let leftViews = crossLanguage ? left.pivotViews : left.nativeViews
+        let rightViews = crossLanguage ? right.pivotViews : right.nativeViews
+        var values: [Double] = []
+        for view in SemanticText.views {
+            guard let a = leftViews[view], let b = rightViews[view],
+                  let space = a.space, !space.isEmpty, space == b.space,
+                  let vectorA = a.vector, let vectorB = b.vector,
+                  !vectorA.isEmpty, vectorA.count == vectorB.count else { continue }
+            values.append(cosine(vectorA, vectorB))
+        }
+        guard values.count >= 2 else { return (0, values.count) }
+        values.sort()
+        return (values[values.count / 2], values.count)
+    }
+
     static func sourceScore(_ left: IndexedFile, _ right: IndexedFile, cache: ClusterCache) -> (Double, String) {
         // GitHub and its raw-content host serve unrelated repositories under
         // one domain. Shared words such as README, main, microsoft and lessons
@@ -278,7 +294,8 @@ public func assessPair(_ left: IndexedFile, _ right: IndexedFile) -> PairAssessm
     assessPair(left, right, cache: ClusterCache())
 }
 
-func assessPair(_ left: IndexedFile, _ right: IndexedFile, cache: ClusterCache) -> PairAssessment {
+func assessPair(_ left: IndexedFile, _ right: IndexedFile, cache: ClusterCache,
+                legacy: Bool = false) -> PairAssessment {
     let leftStem = left.path.deletingPathExtension().lastPathComponent
     let rightStem = right.path.deletingPathExtension().lastPathComponent
     let filename = ClusterMath.filenameSimilarity(
@@ -290,12 +307,17 @@ func assessPair(_ left: IndexedFile, _ right: IndexedFile, cache: ClusterCache) 
         content = max(content, 0.50)
     }
     let sameNativeSpace = !(left.vectorSpace ?? "").isEmpty && left.vectorSpace == right.vectorSpace
-    let semantic = sameNativeSpace ? ClusterMath.cosine(left.vector, right.vector) : 0.0
+    let nativeMulti = sameNativeSpace && !legacy ? ClusterMath.multiView(left, right, crossLanguage: false) : (0.0, 0)
+    let semantic = sameNativeSpace
+        ? (nativeMulti.1 >= 2 ? nativeMulti.0 : ClusterMath.cosine(left.vector, right.vector)) : 0.0
     var crossSemantic = 0.0
+    var pivotCoverage = 0
     if let leftSpace = left.vectorSpace, let rightSpace = right.vectorSpace,
        !leftSpace.isEmpty, !rightSpace.isEmpty, leftSpace != rightSpace,
        left.pivotSpace == "en", right.pivotSpace == "en" {
-        crossSemantic = ClusterMath.cosine(left.pivotVector, right.pivotVector)
+        let pivotMulti = legacy ? (0.0, 0) : ClusterMath.multiView(left, right, crossLanguage: true)
+        pivotCoverage = pivotMulti.1
+        crossSemantic = pivotMulti.1 >= 2 ? pivotMulti.0 : ClusterMath.cosine(left.pivotVector, right.pivotVector)
     }
     let semanticForScore = sameNativeSpace ? semantic : crossSemantic
     let (source, sourceDetail) = ClusterMath.sourceScore(left, right, cache: cache)
@@ -323,9 +345,11 @@ func assessPair(_ left: IndexedFile, _ right: IndexedFile, cache: ClusterCache) 
         Evidence(kind: "content_similarity", strength: ClusterMath.strength("content", content),
                  score: content, detail: "正文关键词相似度 \(format2(content))"),
         Evidence(kind: "semantic_similarity", strength: ClusterMath.strength("semantic", semantic),
-                 score: semantic, detail: "本地语义相似度 \(format2(semantic))"),
+                 score: semantic, detail: "本地语义相似度 \(format2(semantic))"
+                    + (!legacy && semantic > 0 && nativeMulti.1 < 2 ? "（多视图覆盖不足，使用综合向量）" : "")),
         Evidence(kind: "semantic_cross_language", strength: ClusterMath.strength("semantic", crossSemantic),
-                 score: crossSemantic, detail: ClusterMath.crossLanguageDetail(left, right, crossSemantic)),
+                 score: crossSemantic, detail: ClusterMath.crossLanguageDetail(left, right, crossSemantic)
+                    + (!legacy && crossSemantic > 0 && pivotCoverage < 2 ? "（多视图覆盖不足，使用综合向量）" : "")),
         Evidence(kind: "source_url", strength: ClusterMath.strength("source_url", source),
                  score: source, detail: sourceDetail),
     ]
@@ -387,7 +411,8 @@ public func loadIndex(_ db: Database, statuses: [String] = ["active"]) throws ->
         SELECT f.*,x.text,x.title,x.keywords,x.summary,x.extraction_error,
         x.native_embedding,x.native_embedding_space,
         p.pivot_embedding,p.pivot_embedding_space,p.source_language AS pivot_source_language,
-        p.embedding_version AS pivot_embedding_version
+        p.embedding_version AS pivot_embedding_version,
+        p.translation_version AS pivot_translation_version
         FROM files f LEFT JOIN features x ON x.file_id=f.id
         LEFT JOIN semantic_pivots p ON p.file_id=f.id AND p.target_language='en' AND p.fingerprint=f.fingerprint
         WHERE f.status IN (\(placeholders)) ORDER BY f.name
@@ -417,7 +442,8 @@ public func loadIndex(_ db: Database, statuses: [String] = ["active"]) throws ->
             pivotVector: decodeVector(row["pivot_embedding"].blob),
             pivotSpace: row["pivot_embedding_space"].optionalString,
             pivotSourceLanguage: row["pivot_source_language"].optionalString,
-            pivotEmbeddingVersion: row["pivot_embedding_version"].optionalString
+            pivotEmbeddingVersion: row["pivot_embedding_version"].optionalString,
+            pivotTranslationVersion: row["pivot_translation_version"].optionalString
         )
     }
 }
@@ -551,7 +577,7 @@ public enum Clustering {
     }
 
     static func completeLink(_ clusters: [[IndexedFile]], threshold: Double,
-                             cache: ClusterCache) -> [[IndexedFile]] {
+                             cache: ClusterCache, pairCache: PairAssessmentCache? = nil) -> [[IndexedFile]] {
         var clusters = clusters
         // Pair scores depend on two immutable indexed files. Complete-link
         // revisits the same pairs after every merge, so calculate each score
@@ -561,7 +587,7 @@ public enum Clustering {
         for (index, left) in files.enumerated() {
             for right in files.dropFirst(index + 1) {
                 pairScores[PairKey(min(left.id, right.id), max(left.id, right.id))] =
-                    assessPair(left, right, cache: cache).total
+                    (pairCache?.assess(left, right) ?? assessPair(left, right, cache: cache)).total
             }
         }
         while true {

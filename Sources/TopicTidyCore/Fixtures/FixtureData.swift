@@ -6,12 +6,16 @@ public enum FixtureData {
     public enum Name: String {
         case core = "benchmark_core"
         case holdout = "holdout_unseen"
+        case upgradeDevelopment = "upgrade_development"
+        case upgradeHoldout = "upgrade_holdout"
     }
 
     public static func json(for name: Name) -> String {
         switch name {
         case .core: return core
         case .holdout: return holdout
+        case .upgradeDevelopment: return upgradeDevelopment
+        case .upgradeHoldout: return upgradeHoldout
         }
     }
 
@@ -186,5 +190,63 @@ public enum FixtureData {
 }
 
 """#
+
+    static let upgradeDevelopment = #"""
+{
+  "name": "TopicTidy upgrade development",
+  "documents": [
+    {"name":"Atlas Research Design.md","content":"ELEC7301 ELEC7301 atlas research sensor calibration harbor measurement methods.","vector":[1,0,0],"source_urls":["https://github.com/acme/atlas/blob/main/research/design.md"]},
+    {"name":"Harbor Research Field.md","content":"ELEC7301 ELEC7301 harbor research sensor calibration field measurements.","vector":[0.9,0.43589,0],"source_urls":["https://github.com/acme/atlas/blob/main/research/field.md"]},
+    {"name":"Atlas Research Addendum.md","content":"atlas research sensor calibration harbor measurement methods field notes.","vector":[1,0,0],"source_urls":["https://github.com/acme/atlas/blob/main/research/design-addendum.md"]},
+
+    {"name":"Solar Grid Training One.md","content":"solar grid inverter design controls training module and experiments","vector":[1,0,0],"native_views":{"identity":[1,0],"overview":[1,0],"body":[0,1]}},
+    {"name":"Grid Solar Tutorial Two.md","content":"solar grid inverter design controls tutorial module and exercises","vector":[0,1,0],"native_views":{"identity":[1,0],"overview":[1,0],"body":[1,0]}},
+
+    {"name":"电池热安全讲义.md","title":"电池热安全讲义","content":"电池储能的热监测、隔离和消防程序。","native_space":"zh-Hans","pivot_vector":[1,0],"pivot_views":{"identity":[1,0],"overview":[1,0],"body":[0,1]},"translated_content":"Battery storage thermal monitoring isolation and fire safety."},
+    {"name":"Battery Safety Brief.md","content":"Battery storage thermal monitoring isolation and fire safety.","native_space":"en","pivot_vector":[0,1],"pivot_views":{"identity":[1,0],"overview":[1,0],"body":[1,0]}},
+
+    {"name":"ELEC7302 Research Design.md","content":"ELEC7302 ELEC7302 atlas research sensor calibration harbor measurement methods.","vector":[1,0,0]},
+    {"name":"ELEC7302 Research Field.md","content":"ELEC7302 ELEC7302 harbor research sensor calibration field measurements.","vector":[1,0,0]},
+    {"name":"tax invoice.md","content":"Annual household tax invoice for travel expenses.","source_urls":["https://github.com/acme/atlas/blob/main/research/tax.md"]},
+    {"name":"oven recipe.md","content":"Baking bread dough with oven temperature records.","source_urls":["https://github.com/acme/other/blob/main/research/recipe.md"]}
+  ],
+  "expected_clusters": {
+    "ELEC7301": ["Atlas Research Design.md","Harbor Research Field.md","Atlas Research Addendum.md"],
+    "Multi-view Solar": ["Solar Grid Training One.md","Grid Solar Tutorial Two.md"],
+    "Multi-view Battery": ["电池热安全讲义.md","Battery Safety Brief.md"],
+    "ELEC7302": ["ELEC7302 Research Design.md","ELEC7302 Research Field.md"]
+  },
+  "expected_unclassified": ["tax invoice.md","oven recipe.md"]
+}
+
+"""#
+
+    static let upgradeHoldout = #"""
+{
+  "name": "TopicTidy upgrade independent holdout",
+  "documents": [
+    {"name":"Delta Research Prototype.md","content":"COMP7303 COMP7303 delta research coastal telemetry sensor calibration methods.","vector":[1,0,0],"source_urls":["https://github.com/lab/delta/blob/main/notes/prototype.md"]},
+    {"name":"Coastal Research Validation.md","content":"COMP7303 COMP7303 coastal research telemetry sensor validation field methods.","vector":[0.9,0.43589,0],"source_urls":["https://github.com/lab/delta/blob/main/notes/validation.md"]},
+    {"name":"Delta Research Supplement.md","content":"delta research coastal telemetry sensor calibration methods field supplement.","vector":[1,0,0],"source_urls":["https://github.com/lab/delta/blob/main/notes/prototype-supplement.md"]},
+
+    {"name":"Harbor Power Notes.md","content":"harbor power inverter protection circuit testing exercise","vector":[1,0,0],"native_views":{"identity":[1,0],"overview":[1,0],"body":[0,1]}},
+    {"name":"Power Harbor Exercises.md","content":"harbor power inverter protection circuit practice exercise","vector":[0,1,0],"native_views":{"identity":[1,0],"overview":[1,0],"body":[1,0]}},
+
+    {"name":"Transit Platform Guide.md","content":"Train platform crowd routing and timetable planning.","native_space":"en","pivot_vector":[1,0],"pivot_views":{"identity":[1,0],"overview":[0,1],"body":[0,1]}},
+    {"name":"烘焙配方手册.md","content":"烤箱烘焙配方与发酵时间记录。","native_space":"zh-Hans","pivot_vector":[0.9,0.43589],"pivot_views":{"identity":[1,0],"overview":[1,0],"body":[1,0]},"translated_content":"Baking recipes oven temperature and fermentation timing."},
+    {"name":"Delta Other Course.md","content":"COMP7304 COMP7304 delta research coastal telemetry sensor calibration methods.","vector":[1,0,0]},
+    {"name":"Delta Other Lab.md","content":"COMP7304 COMP7304 coastal telemetry sensor field measurements.","vector":[1,0,0]},
+    {"name":"holiday booking.md","content":"Hotel booking and vacation itinerary.","source_urls":["https://github.com/lab/delta/blob/main/notes/holiday.md"]}
+  ],
+  "expected_clusters": {
+    "COMP7303": ["Delta Research Prototype.md","Coastal Research Validation.md","Delta Research Supplement.md"],
+    "Harbor Power": ["Harbor Power Notes.md","Power Harbor Exercises.md"],
+    "COMP7304": ["Delta Other Course.md","Delta Other Lab.md"]
+  },
+  "expected_unclassified": ["Transit Platform Guide.md","烘焙配方手册.md","holiday booking.md"]
+}
+
+"""#
+
 
 }

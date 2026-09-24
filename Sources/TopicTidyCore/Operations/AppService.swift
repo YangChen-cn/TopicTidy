@@ -28,10 +28,15 @@ public struct SessionMember: Sendable {
     public var applied: Bool
     public var evidence: [SessionEvidence]
     public var conflicts: [String]
+    public var reviewRequired: Bool
+    public var memberReason: String
+    public var groupDiagnostics: [String: AnySendableValue]
 
     public init(id: Int, name: String, path: String, topic: String?, topicKey: String?,
                 confidence: Double, excluded: Bool, applied: Bool,
-                evidence: [SessionEvidence], conflicts: [String]) {
+                evidence: [SessionEvidence], conflicts: [String],
+                reviewRequired: Bool = false, memberReason: String = "",
+                groupDiagnostics: [String: AnySendableValue] = [:]) {
         self.id = id
         self.name = name
         self.path = path
@@ -42,6 +47,9 @@ public struct SessionMember: Sendable {
         self.applied = applied
         self.evidence = evidence
         self.conflicts = conflicts
+        self.reviewRequired = reviewRequired
+        self.memberReason = memberReason
+        self.groupDiagnostics = groupDiagnostics
     }
 }
 
@@ -189,7 +197,11 @@ public actor AppService {
                                         strength: $0["strength"] as? String ?? "none",
                                         detail: $0["detail"] as? String ?? "")
                     },
-                    conflicts: JSONValue.stringArray(row["conflicts"].string)
+                    conflicts: JSONValue.stringArray(row["conflicts"].string),
+                    reviewRequired: row["review_required"].int != 0,
+                    memberReason: row["member_reason"].string,
+                    groupDiagnostics: JSONValue.stringDictionary(row["group_diagnostics"].string)
+                        .mapValues(AnySendableValue.init)
                 ))
             }
         }

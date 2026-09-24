@@ -35,7 +35,7 @@ public enum JSONValue {
 }
 
 public final class Database {
-    public static let schemaVersion = 6
+    public static let schemaVersion = 7
 
     public static let schema = """
     CREATE TABLE IF NOT EXISTS schema_meta(version INTEGER NOT NULL);
@@ -64,6 +64,15 @@ public final class Database {
      embedding_version TEXT NOT NULL, created_at REAL NOT NULL,
      PRIMARY KEY(file_id, target_language)
     );
+    CREATE TABLE IF NOT EXISTS semantic_views(
+     file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+     fingerprint TEXT NOT NULL, view TEXT NOT NULL, kind TEXT NOT NULL,
+     semantic_text TEXT NOT NULL, translated_text TEXT,
+     text_version TEXT NOT NULL, encoder_version TEXT NOT NULL,
+     translation_version TEXT, source_language TEXT NOT NULL,
+     embedding BLOB, embedding_space TEXT,
+     PRIMARY KEY(file_id,view,kind)
+    );
     CREATE TABLE IF NOT EXISTS topics(
      topic_key TEXT PRIMARY KEY, display_name TEXT NOT NULL,
      folder TEXT, source TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1
@@ -76,6 +85,9 @@ public final class Database {
      file_id INTEGER NOT NULL REFERENCES files(id), topic_key TEXT REFERENCES topics(topic_key),
      group_name TEXT, confidence REAL NOT NULL,
      reasons TEXT NOT NULL DEFAULT '[]', evidence TEXT NOT NULL DEFAULT '[]', conflicts TEXT NOT NULL DEFAULT '[]',
+     review_required INTEGER NOT NULL DEFAULT 0, auto_eligible INTEGER NOT NULL DEFAULT 0,
+     legacy_confidence REAL NOT NULL DEFAULT 0, group_diagnostics TEXT NOT NULL DEFAULT '{}',
+     member_reason TEXT NOT NULL DEFAULT '',
      excluded INTEGER NOT NULL DEFAULT 0, applied INTEGER NOT NULL DEFAULT 0,
      source_fingerprint TEXT NOT NULL, destination TEXT
     );

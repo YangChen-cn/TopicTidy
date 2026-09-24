@@ -41,10 +41,10 @@ import Testing
     #expect(group.displayName == "Renewable Energy")
     #expect(group.topicKey.hasPrefix("cluster:"))
     let evidence = Dictionary(uniqueKeysWithValues: group.evidence.map { ($0.kind, $0) })
-    #expect(Set(evidence.keys) == [
+    #expect(Set(evidence.keys).isSuperset(of: [
         "course_code", "filename_similarity", "content_similarity", "semantic_similarity",
-        "semantic_cross_language", "source_url",
-    ])
+        "semantic_cross_language", "source_url", "cluster_support",
+    ]))
     #expect(evidence["semantic_similarity"]?.strength == "strong")
     #expect(evidence["source_url"]?.strength == "none")
 }

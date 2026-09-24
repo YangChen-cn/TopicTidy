@@ -489,6 +489,7 @@ public enum Operations {
             try db.connection.run(
                 """
                 UPDATE plan_members SET topic_key=?,group_name=?,destination=NULL,excluded=0
+                  ,review_required=1,auto_eligible=0,legacy_confidence=0
                 WHERE plan_id=? AND id=?
                 """,
                 [identity, topic, planID, try intArgument(args[0])]
@@ -505,7 +506,7 @@ public enum Operations {
             if let row { identity = row[0].string } else { identity = try ensureTopic(db, target) }
             for source in args[0..<(args.count - 1)] {
                 try db.connection.run(
-                    "UPDATE plan_members SET topic_key=?,group_name=?,destination=NULL WHERE plan_id=? AND group_name=?",
+                    "UPDATE plan_members SET topic_key=?,group_name=?,destination=NULL,review_required=1,auto_eligible=0,legacy_confidence=0 WHERE plan_id=? AND group_name=?",
                     [identity, target, planID, source]
                 )
             }
@@ -523,6 +524,7 @@ public enum Operations {
             try db.connection.run(
                 """
                 UPDATE plan_members SET topic_key=?,group_name=?,destination=NULL,excluded=0
+                  ,review_required=1,auto_eligible=0,legacy_confidence=0
                 WHERE plan_id=? AND id=?
                 """,
                 [identity, topic, planID, try intArgument(args[0])]
@@ -544,6 +546,13 @@ public enum Operations {
             action = "主题 \(args[0]) 的目录设为 \(folder.path)"
         default:
             throw OrganizerError("无法识别命令或参数数量不正确")
+        }
+
+        if let planID, ["move", "merge", "split"].contains(command) {
+            try db.connection.run(
+                "UPDATE plan_members SET review_required=1,auto_eligible=0,legacy_confidence=0 WHERE plan_id=?",
+                [planID]
+            )
         }
 
         try db.connection.run(

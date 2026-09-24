@@ -54,6 +54,9 @@ struct TopicGroupView: View {
     private var statusText: String {
         if group.isUnclassified { return "\(group.members.count) 个文件 · 保留原位" }
         if group.isApplied { return "已整理 · \(group.members.count) 个文件" }
+        if group.members.contains(where: \.reviewRequired) {
+            return "\(group.pendingCount) 个文件 · 需确认 · 评分 \(Int(group.confidence * 100))"
+        }
         return "\(group.pendingCount) 个文件 · 评分 \(Int(group.confidence * 100))"
     }
 }

@@ -87,6 +87,9 @@ struct Propose: ParsableCommand {
                 "plan_id": result.planID,
                 "groups": result.groups.map { $0.asDictionary(destination: context.settings.organizedDir) },
                 "unclassified": result.unclassified.map { $0.path.path },
+                "unclassified_reasons": Dictionary(uniqueKeysWithValues: result.unclassified.map {
+                    ($0.path.path, result.unclassifiedReasons[$0.id] ?? "尚无足够证据")
+                }),
                 "semantic_backend_used": result.encoderVersion as Any,
                 "semantic_error": result.semanticError as Any,
                 "translation_backend_used": result.translationVersion as Any,
@@ -126,7 +129,8 @@ func renderPlan(_ db: Database, _ settings: Settings, planID: Int) throws {
         output("\n\(label)")
         for row in members {
             let excluded = row["excluded"].int != 0 ? " (excluded)" : ""
-            output("  #\(row["id"].int) \(row["name"].string)\(excluded)")
+            let reason = row["member_reason"].string
+            output("  #\(row["id"].int) \(row["name"].string)\(excluded)\(reason.isEmpty ? "" : " · \(reason)")")
         }
         let evidence = JSONValue.dictionaryArray(members[0]["evidence"].string)
         if !evidence.isEmpty {
@@ -475,9 +479,13 @@ struct BenchmarkCommand: ParsableCommand {
     @Argument(help: "fixture JSON；省略时使用内置核心数据集") var fixture: String?
     @Flag(name: .long, help: "输出机器可读 JSON") var json = false
     @Option(name: .customLong("min-f1"), help: "低于阈值时返回非零退出码") var minF1 = 1.0
+    @Option(name: .long, help: "legacy、expansion-only、multiview-only 或 upgraded") var variant = "upgraded"
 
     func run() throws {
-        let result = try Benchmark.run(fixturePath: fixture)
+        guard let selected = Benchmark.Variant(rawValue: variant) else {
+            throw ValidationError("未知 benchmark variant：\(variant)")
+        }
+        let result = try Benchmark.run(fixturePath: fixture, variant: selected)
         if json {
             outputJSON(result)
         } else {

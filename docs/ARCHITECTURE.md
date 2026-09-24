@@ -11,7 +11,7 @@ Sources/
 │   ├── Scanner/          stat/指纹/来源元数据/索引更新
 │   ├── Extractors/       PDF / DOCX / PPTX / 纯文本
 │   ├── Semantic/         NLEmbedding、Apple Translation、代表性文本
-│   ├── Clustering/       配对评估、complete-link、命名、证据
+│   ├── Clustering/       配对评估、强种子与受约束扩张、命名、组级证据
 │   ├── Operations/       预览、移动、撤销、设置、调度、基准
 │   ├── Fixtures/         内嵌 benchmark/holdout JSON
 │   └── Support/          Python 语义兼容层、文件锁
@@ -33,7 +33,7 @@ Sources/
 
 `Semantic` 直接在进程内调用 `NLEmbedding.sentenceEmbedding` 与 Apple Translation：`SemanticText` 生成最多约 2400 字符的代表性文本（标题/摘要/关键词 + 正文前中后采样），`NativeMacOSEncoder` 分块采样后做归一化平均，`Pivot` 只对候选文件补 English pivot，`NativeTranslationBackend` 只使用已安装语言资产，绝不请求下载。语义 backend 版本号因此从 `apple-nlembedding:<系统版本>:<helper 源码摘要>` 变为 `...:native`，旧缓存向量会在下一次 propose 时自动重算。
 
-`Clustering` 保留原规则：课程号冲突是硬负证据、complete-link 要求组间每一对都过阈值、正文课程号需要两个独立文件才升级为强证据、Markdown 链接集合不做传递扩张、generic token 不参与 overlap 放大。`ClusterCache` 只缓存单个文件的派生值；complete-link 在一次 proposal 内另存每对文件的评分，避免合并过程反复评估同一对文件，不改变评分或阈值。110 文件实测见 [REAL_WORLD_110_EVALUATION.md](REAL_WORLD_110_EVALUATION.md)。
+`Clustering` 先用 complete-link 建立紧密核心，再用冻结的组画像做受约束扩张。课程号冲突和不同 GitHub 仓库仍是硬负证据；正文课程号需要两个独立文件才升级为强证据；Markdown 链接集合不做传递扩张；generic filename token 不参与 overlap 放大。`ClusterCache` 只缓存单文件派生值，`PairAssessmentCache` 仅活在一次 proposal 内。建议资格与自动整理资格分别计算，后者要求旧算法也形成相同的完整成员组。升级的边界、测试与数据见 [CLUSTERING_UPGRADE.md](CLUSTERING_UPGRADE.md)，先前 110 文件实测见 [REAL_WORLD_110_EVALUATION.md](REAL_WORLD_110_EVALUATION.md)。
 
 `Operations` 负责预览、移动、日志恢复和撤销；`Workflow` 组合建议与自动确认；`AppService` 是 GUI 与测试共用的请求/响应门面（原 `gui_bridge.py` 的逻辑，现在进程内）。`Locking` 用 `flock(2)` 保证 CLI、GUI 和每日任务互斥。`Scheduler` 只维护 LaunchAgent，命令指向原生二进制（应用内为 `Contents/Resources/tt`，否则为当前 `tt`）。
 

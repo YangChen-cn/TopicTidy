@@ -109,7 +109,7 @@ tt schedule enable --at 09:00
 tt semantic status
 ```
 
-`scan` 只读取各扫描文件夹的顶层普通文件，忽略子目录、符号链接、隐藏文件和未完成下载。菜单栏「设置 → 扫描文件夹」也可添加或移除目录，至少保留一个；更改扫描目录会关闭自动整理，须再次明确启用。当前版本要求扫描目录与整理目录在同一磁盘。`propose --json` 输出稳定的 `topic_id`、可编辑的 `display_name`，以及 course code、文件名、正文、native semantic、cross-language semantic 和来源 URL 的结构化证据。
+`scan` 只读取各扫描文件夹的顶层普通文件，忽略子目录、符号链接、隐藏文件和未完成下载。菜单栏「设置 → 扫描文件夹」也可添加或移除目录，至少保留一个；更改扫描目录会关闭自动整理，须再次明确启用。当前版本要求扫描目录与整理目录在同一磁盘。`propose --json` 输出稳定的 `topic_id`、可编辑的 `display_name`，以及 course code、文件名、正文、native semantic、cross-language semantic、来源 URL 和组级依据的结构化证据；新增扩张会标记需要人工确认。
 
 `apply` 会重新计算实际目标并要求确认。方案生成后已变化的文件会跳过；同名冲突使用稳定编号后缀，绝不覆盖。高置信度自动确认默认关闭，只处理完整、无排除成员、无冲突且达到阈值的主题。
 
@@ -134,7 +134,7 @@ tt semantic status
 已配置文件夹的顶层文件（默认 ~/Downloads）
    ↓ 扫描（只读）
 课程号 / 文件名 / 来源 URL / 正文 / 本地语义
-   ↓ 保守聚类 + 结构化证据
+   ↓ 强种子 + 受约束扩张 + 结构化组级证据
 方案（SQLite，未移动任何文件）
    ↓ 用户按主题确认
 移动记录 + 关联学习
@@ -149,6 +149,8 @@ swift build            # 构建 Core、tt、TopicTidy
 swift test             # 扫描、提取、聚类、操作、自动化与 GUI 测试
 .build/debug/tt benchmark            # 核心聚类基准（F1 门禁）
 .build/debug/tt benchmark Resources/fixtures/holdout_unseen.json
+.build/debug/tt benchmark Resources/fixtures/upgrade_development.json
+.build/debug/tt benchmark Resources/fixtures/upgrade_holdout.json
 scripts/build_app.sh --app-only # 本地签名 .app，供 GUI 手动验收
 scripts/build_app.sh   # 用户明确要求发布时才生成签名 .app 与 DMG
 scripts/package_cli.sh # 生成 CLI 压缩包

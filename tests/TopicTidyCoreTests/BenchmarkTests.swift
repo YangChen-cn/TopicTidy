@@ -15,6 +15,41 @@ private func runFixture(_ fixture: FixtureData.Name) throws -> [String: Any] {
     try Benchmark.run(fixture: try #require(FixtureData.json(for: fixture).data(using: .utf8)))
 }
 
+private func runVariant(_ fixture: FixtureData.Name, _ variant: Benchmark.Variant) throws -> [String: Any] {
+    try Benchmark.run(fixture: try #require(FixtureData.json(for: fixture).data(using: .utf8)),
+                      variant: variant)
+}
+
+@Test func upgradeDevelopmentShowsIndependentGainsAndNoFalseMerge() throws {
+    let legacy = try runVariant(.upgradeDevelopment, .legacy)
+    let expansion = try runVariant(.upgradeDevelopment, .expansionOnly)
+    let views = try runVariant(.upgradeDevelopment, .multiViewOnly)
+    let upgraded = try runVariant(.upgradeDevelopment, .upgraded)
+    let oldRecall = legacy["pairwise_recall"] as? Double ?? 0
+    #expect((expansion["pairwise_recall"] as? Double ?? 0) > oldRecall)
+    #expect((views["pairwise_recall"] as? Double ?? 0) > oldRecall)
+    #expect((upgraded["pairwise_recall"] as? Double ?? 0) >= oldRecall + 0.10)
+    #expect(upgraded["pairwise_precision"] as? Double == 1.0)
+    #expect(upgraded["pairwise_recall"] as? Double == 1.0)
+    #expect(upgraded["unclassified_match"] as? Bool == true)
+    let frozen = try golden("benchmark-upgrade-development-golden.json")
+    #expect(upgraded["predicted_clusters"] as? [String: [String]]
+        == frozen["predicted_clusters"] as? [String: [String]])
+}
+
+@Test func upgradeHoldoutPreservesSafetyWithBetterRecall() throws {
+    let legacy = try runVariant(.upgradeHoldout, .legacy)
+    let upgraded = try runVariant(.upgradeHoldout, .upgraded)
+    #expect(upgraded["pairwise_precision"] as? Double == 1.0)
+    #expect((upgraded["pairwise_recall"] as? Double ?? 0) >= 0.90)
+    #expect((upgraded["pairwise_recall"] as? Double ?? 0)
+        >= (legacy["pairwise_recall"] as? Double ?? 0) + 0.10)
+    #expect(upgraded["unclassified_match"] as? Bool == true)
+    let frozen = try golden("benchmark-upgrade-holdout-golden.json")
+    #expect(upgraded["predicted_clusters"] as? [String: [String]]
+        == frozen["predicted_clusters"] as? [String: [String]])
+}
+
 @Test func coreBenchmarkDetectsExpectedClustersWithoutFalseMerges() throws {
     let result = try runFixture(.core)
 

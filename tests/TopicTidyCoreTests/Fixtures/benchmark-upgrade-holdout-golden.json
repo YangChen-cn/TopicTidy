@@ -1,0 +1,25 @@
+{
+  "pairwise_f1": 1,
+  "pairwise_precision": 1,
+  "pairwise_recall": 1,
+  "predicted_clusters": {
+    "COMP7303": [
+      "Coastal Research Validation.md",
+      "Delta Research Prototype.md",
+      "Delta Research Supplement.md"
+    ],
+    "COMP7304": [
+      "Delta Other Course.md",
+      "Delta Other Lab.md"
+    ],
+    "Harbor Power": [
+      "Harbor Power Notes.md",
+      "Power Harbor Exercises.md"
+    ]
+  },
+  "predicted_unclassified": [
+    "Transit Platform Guide.md",
+    "holiday booking.md",
+    "烘焙配方手册.md"
+  ]
+}

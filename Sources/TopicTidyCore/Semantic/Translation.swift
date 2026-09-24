@@ -167,7 +167,8 @@ public enum Pivot {
         _ files: inout [IndexedFile],
         encoder: SemanticEncoder,
         translator: TranslationBackend,
-        target: String = "en"
+        target: String = "en",
+        budget: TranslationBudget? = nil
     ) throws -> [String] {
         var pending: [IndexedFile] = []
         for file in files {
@@ -190,7 +191,9 @@ public enum Pivot {
                 [file.id, file.fingerprint, target]
             ).first
             if let cached, cached["source_language"].string == file.vectorSpace,
-               cached["semantic_text"].string == currentSemanticText {
+               cached["semantic_text"].string == currentSemanticText,
+               (cached["translation_version"].string == translator.version
+                || cached["translation_version"].string == "identity:1") {
                 translated[file.id] = (cached["translated_text"].string, cached["translation_version"].string)
             } else {
                 fresh.append(file)
@@ -223,6 +226,10 @@ public enum Pivot {
                 continue
             }
             do {
+                if let budget, !budget.reserve(semanticText) {
+                    messages.append("本轮跨语言文本预算已用尽")
+                    continue
+                }
                 let value = try translator.translate([semanticText], source: source, target: target)[0]
                 translated[file.id] = (value, translator.version)
             } catch {
@@ -248,6 +255,7 @@ public enum Pivot {
             files[index].pivotSpace = result.space
             files[index].pivotSourceLanguage = file.vectorSpace
             files[index].pivotEmbeddingVersion = cacheVersion
+            files[index].pivotTranslationVersion = translationVersion
             try db.connection.run(
                 """
                 INSERT INTO semantic_pivots(

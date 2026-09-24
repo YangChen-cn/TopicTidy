@@ -42,6 +42,9 @@ public struct IndexedFile: Sendable {
     public var pivotSpace: String?
     public var pivotSourceLanguage: String?
     public var pivotEmbeddingVersion: String?
+    public var pivotTranslationVersion: String?
+    public var nativeViews: [String: EncodedVector] = [:]
+    public var pivotViews: [String: EncodedVector] = [:]
 
     public init(id: Int, path: URL, name: String, fileExtension: String, size: Int,
                 createdAt: Double, modifiedAt: Double, device: Int, inode: Int,
@@ -49,7 +52,8 @@ public struct IndexedFile: Sendable {
                 keywords: [String], summary: String, extractionError: String?,
                 vector: [Double]? = nil, vectorSpace: String? = nil,
                 pivotVector: [Double]? = nil, pivotSpace: String? = nil,
-                pivotSourceLanguage: String? = nil, pivotEmbeddingVersion: String? = nil) {
+                pivotSourceLanguage: String? = nil, pivotEmbeddingVersion: String? = nil,
+                pivotTranslationVersion: String? = nil) {
         self.id = id
         self.path = path
         self.name = name
@@ -72,6 +76,7 @@ public struct IndexedFile: Sendable {
         self.pivotSpace = pivotSpace
         self.pivotSourceLanguage = pivotSourceLanguage
         self.pivotEmbeddingVersion = pivotEmbeddingVersion
+        self.pivotTranslationVersion = pivotTranslationVersion
     }
 }
 
@@ -105,6 +110,11 @@ public struct ProposedGroup: Sendable {
     public var files: [IndexedFile]
     public var evidence: [Evidence]
     public var conflicts: [String]
+    public var reviewRequired: Bool = false
+    public var autoEligible: Bool = false
+    public var legacyConfidence: Double = 0
+    public var diagnostics: [String: AnySendableValue] = [:]
+    public var memberReasons: [Int: String] = [:]
 
     public init(topicKey: String, displayName: String, confidence: Double,
                 files: [IndexedFile], evidence: [Evidence], conflicts: [String] = []) {
@@ -135,8 +145,17 @@ public struct ProposedGroup: Sendable {
             "reasons": reasons,
             "evidence": evidence.map(\.asDictionary),
             "conflicts": conflicts,
+            "review_required": reviewRequired,
+            "group_diagnostics": diagnostics.mapValues(\.value),
+            "member_reasons": Dictionary(uniqueKeysWithValues: files.map { ($0.name, memberReasons[$0.id] ?? "核心成员") }),
         ]
     }
+}
+
+/// Small type-erased value so proposal diagnostics remain Sendable.
+public struct AnySendableValue: @unchecked Sendable {
+    public let value: Any
+    public init(_ value: Any) { self.value = value }
 }
 
 /// `round(value, digits)` with Python's round-half-to-even behaviour.

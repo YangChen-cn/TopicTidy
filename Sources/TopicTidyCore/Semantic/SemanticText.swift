@@ -2,6 +2,32 @@ import Foundation
 
 public enum SemanticText {
     public static let version = "3"
+    public static let viewVersion = "1"
+    public static let views = ["identity", "overview", "body"]
+
+    public static func viewText(_ file: IndexedFile, view: String) -> String {
+        switch view {
+        case "identity":
+            let stem = file.path.deletingPathExtension().lastPathComponent
+            return Py.prefix(Py.collapseWhitespace("\(stem) \(file.title)"), 400)
+        case "overview":
+            return Py.prefix(Py.collapseWhitespace("\(file.summary) \(file.keywords.joined(separator: ", "))"), 600)
+        case "body":
+            return sample(file.text, budget: 1400)
+        default: return ""
+        }
+    }
+
+    static func distinctViews(_ file: IndexedFile) -> [(String, String)] {
+        var seen: Set<String> = []
+        return views.compactMap { view in
+            let value = viewText(file, view: view)
+            let key = Py.lower(value)
+            guard !value.isEmpty, !seen.contains(key) else { return nil }
+            seen.insert(key)
+            return (view, value)
+        }
+    }
 
     /// Front/middle/tail sampling so long documents stay within the budget.
     static func sample(_ value: String, budget: Int) -> String {

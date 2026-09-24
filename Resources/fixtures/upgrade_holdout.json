@@ -1,0 +1,23 @@
+{
+  "name": "TopicTidy upgrade independent holdout",
+  "documents": [
+    {"name":"Delta Research Prototype.md","content":"COMP7303 COMP7303 delta research coastal telemetry sensor calibration methods.","vector":[1,0,0],"source_urls":["https://github.com/lab/delta/blob/main/notes/prototype.md"]},
+    {"name":"Coastal Research Validation.md","content":"COMP7303 COMP7303 coastal research telemetry sensor validation field methods.","vector":[0.9,0.43589,0],"source_urls":["https://github.com/lab/delta/blob/main/notes/validation.md"]},
+    {"name":"Delta Research Supplement.md","content":"delta research coastal telemetry sensor calibration methods field supplement.","vector":[1,0,0],"source_urls":["https://github.com/lab/delta/blob/main/notes/prototype-supplement.md"]},
+
+    {"name":"Harbor Power Notes.md","content":"harbor power inverter protection circuit testing exercise","vector":[1,0,0],"native_views":{"identity":[1,0],"overview":[1,0],"body":[0,1]}},
+    {"name":"Power Harbor Exercises.md","content":"harbor power inverter protection circuit practice exercise","vector":[0,1,0],"native_views":{"identity":[1,0],"overview":[1,0],"body":[1,0]}},
+
+    {"name":"Transit Platform Guide.md","content":"Train platform crowd routing and timetable planning.","native_space":"en","pivot_vector":[1,0],"pivot_views":{"identity":[1,0],"overview":[0,1],"body":[0,1]}},
+    {"name":"烘焙配方手册.md","content":"烤箱烘焙配方与发酵时间记录。","native_space":"zh-Hans","pivot_vector":[0.9,0.43589],"pivot_views":{"identity":[1,0],"overview":[1,0],"body":[1,0]},"translated_content":"Baking recipes oven temperature and fermentation timing."},
+    {"name":"Delta Other Course.md","content":"COMP7304 COMP7304 delta research coastal telemetry sensor calibration methods.","vector":[1,0,0]},
+    {"name":"Delta Other Lab.md","content":"COMP7304 COMP7304 coastal telemetry sensor field measurements.","vector":[1,0,0]},
+    {"name":"holiday booking.md","content":"Hotel booking and vacation itinerary.","source_urls":["https://github.com/lab/delta/blob/main/notes/holiday.md"]}
+  ],
+  "expected_clusters": {
+    "COMP7303": ["Delta Research Prototype.md","Coastal Research Validation.md","Delta Research Supplement.md"],
+    "Harbor Power": ["Harbor Power Notes.md","Power Harbor Exercises.md"],
+    "COMP7304": ["Delta Other Course.md","Delta Other Lab.md"]
+  },
+  "expected_unclassified": ["Transit Platform Guide.md","烘焙配方手册.md","holiday booking.md"]
+}
