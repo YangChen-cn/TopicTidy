@@ -31,6 +31,114 @@ private final class CountingTranslator: TranslationBackend {
     }
 }
 
+@Test func twoViewsAverageAndThreeViewsUseMedianInBothSpaces() throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    try workspace.put("Left.md", "left")
+    try workspace.put("Right.md", "right")
+    _ = try workspace.scan()
+    let files = try loadIndex(workspace.db)
+    var left = try #require(files.first { $0.name == "Left.md" })
+    var right = try #require(files.first { $0.name == "Right.md" })
+    let identical = EncodedVector(vector: [1, 0], space: "en")
+    let unrelated = EncodedVector(vector: [0, 1], space: "en")
+    left.nativeViews = ["identity": identical, "overview": identical]
+    right.nativeViews = ["identity": identical, "overview": unrelated]
+    left.pivotViews = left.nativeViews
+    right.pivotViews = right.nativeViews
+
+    #expect(ClusterMath.multiView(left, right, crossLanguage: false).0 == 0.5)
+    #expect(ClusterMath.multiView(left, right, crossLanguage: true).0 == 0.5)
+
+    left.nativeViews["body"] = identical
+    right.nativeViews["body"] = EncodedVector(vector: [0.25, sqrt(0.9375)], space: "en")
+    let three = ClusterMath.multiView(left, right, crossLanguage: false)
+    #expect(three.1 == 3)
+    #expect(abs(three.0 - 0.25) < 0.000001)
+}
+
+@Test func distinctOfficialCoursePathsConflictDespiteSharedUniversityAndSubject() throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    for name in ["MIT6.006 lecture 1.md", "MIT6.006 lecture 2.md", "MIT6.046 lecture 1.md"] {
+        try workspace.put(name, "MIT algorithms dynamic programming sorting graph lecture notes")
+    }
+    _ = try workspace.scan()
+    for name in ["MIT6.006 lecture 1.md", "MIT6.006 lecture 2.md", "MIT6.046 lecture 1.md"] {
+        let slug = name.contains("6.006") ? "6-006-introduction-to-algorithms-spring-2020"
+            : "6-046j-design-and-analysis-of-algorithms-spring-2015"
+        try workspace.db.connection.run("UPDATE files SET source_urls=? WHERE name=?", [
+            JSONValue.dumps(["https://ocw.mit.edu/courses/\(slug)/lecture.pdf"]), name,
+        ])
+    }
+    let files = try loadIndex(workspace.db)
+    let first = try #require(files.first { $0.name == "MIT6.006 lecture 1.md" })
+    let second = try #require(files.first { $0.name == "MIT6.006 lecture 2.md" })
+    let other = try #require(files.first { $0.name == "MIT6.046 lecture 1.md" })
+    #expect((assessPair(first, second).metrics["source_url"] ?? 0) >= 0.60)
+    #expect(assessPair(first, other).total == 0)
+    #expect(assessPair(first, other).conflicts.contains("来源 MIT OpenCourseWare 课程不同"))
+}
+
+@Test func verifiedCollectionAndTwoSemanticViewsCanSupportDifferentChapters() throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    for (name, text) in [
+        ("Graph Foundations.md", "vertex edge traversal"),
+        ("Sorting Methods.md", "quicksort heaps insertion"),
+        ("Network Applications.md", "telemetry packets routing"),
+    ] {
+        try workspace.put(name, text)
+    }
+    _ = try workspace.scan()
+    var files = try loadIndex(workspace.db)
+    let collection = "https://github.com/example/algorithms/blob/main/lessons/"
+    let base = EncodedVector(vector: [1, 0], space: "en")
+    let low = EncodedVector(vector: [0, 1], space: "en")
+    let middle = EncodedVector(vector: [0.70, sqrt(0.51)], space: "en")
+    let high = EncodedVector(vector: [0.90, sqrt(0.19)], space: "en")
+    for index in files.indices {
+        files[index].sourceURLs = [collection + files[index].name]
+        files[index].vector = [1, 0]
+        files[index].vectorSpace = "en"
+        files[index].nativeViews = files[index].name == "Network Applications.md"
+            ? ["identity": low, "overview": middle, "body": high]
+            : ["identity": base, "overview": base, "body": base]
+    }
+    let candidate = try #require(files.first { $0.name == "Network Applications.md" })
+    let core = files.filter { $0.name != candidate.name }
+    let cache = ClusterCache()
+    let pairs = PairAssessmentCache(fileCache: cache)
+    #expect(core.allSatisfy { pairs.assess(candidate, $0).total < 0.64 })
+    let result = ClusterProfile(core: core, cache: cache).evaluate(
+        candidate, threshold: 0.64, fileCache: cache, pairs: pairs)
+    #expect(result != nil)
+    #expect(result?.reason.contains("同一来源集合与独立语义") == true)
+}
+
+@Test func sourceAndCorroboratedViewsQualifyAChapterSeed() throws {
+    let workspace = try Workspace()
+    defer { workspace.close() }
+    try workspace.put("Transfer Learning.md", "feature adaptation weights")
+    try workspace.put("Symbolic Reasoning.md", "logic rules inference")
+    _ = try workspace.scan()
+    var files = try loadIndex(workspace.db)
+    let base = EncodedVector(vector: [1, 0], space: "en")
+    for index in files.indices {
+        files[index].sourceURLs = ["https://github.com/example/ai-course/blob/main/lessons/\(files[index].name)"]
+        files[index].vector = [1, 0]
+        files[index].vectorSpace = "en"
+        files[index].nativeViews = files[index].name == "Transfer Learning.md"
+            ? ["identity": EncodedVector(vector: [0, 1], space: "en"),
+               "overview": EncodedVector(vector: [0.78, sqrt(0.3916)], space: "en"),
+               "body": EncodedVector(vector: [0.80, 0.60], space: "en")]
+            : ["identity": base, "overview": base, "body": base]
+    }
+    let cache = ClusterCache()
+    let pairs = PairAssessmentCache(fileCache: cache)
+    #expect(OrdinaryExpansion.seedEligible(files, cache: cache, pairs: pairs, threshold: 0.64))
+}
+
 @Test func multiViewCacheReusesVectorsAndInvalidatesChangedFile() throws {
     let workspace = try Workspace()
     defer { workspace.close() }

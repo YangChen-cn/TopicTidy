@@ -12,9 +12,23 @@
       "ELEC7302 Research Design.md",
       "ELEC7302 Research Field.md"
     ],
+    "Example Blob": [
+      "Origin Graph Lesson.md",
+      "Origin Graph Practice.md",
+      "Origin Logic Lesson.md",
+      "Origin Logic Practice.md"
+    ],
     "Grid Solar": [
       "Grid Solar Tutorial Two.md",
       "Solar Grid Training One.md"
+    ],
+    "MIT6 JS15 Lec": [
+      "MIT6.046JS15 Lec 1.md",
+      "MIT6.046JS15 Lec 2.md"
+    ],
+    "MIT6 S20 Lec": [
+      "MIT6.006S20 Lec 1.md",
+      "MIT6.006S20 Lec 2.md"
     ],
     "电池热安全讲义": [
       "Battery Safety Brief.md",
@@ -22,6 +36,7 @@
     ]
   },
   "predicted_unclassified": [
+    "Origin Holiday.md",
     "oven recipe.md",
     "tax invoice.md"
   ]

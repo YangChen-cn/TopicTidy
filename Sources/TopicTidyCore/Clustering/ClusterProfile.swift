@@ -4,6 +4,7 @@ import Foundation
 /// never be kept in ClusterCache or reused after another proposal.
 final class PairAssessmentCache {
     private var current: [Clustering.PairKey: PairAssessment] = [:]
+    private var legacyCurrent: [Clustering.PairKey: PairAssessment] = [:]
     private let fileCache: ClusterCache
 
     init(fileCache: ClusterCache) { self.fileCache = fileCache }
@@ -13,6 +14,14 @@ final class PairAssessmentCache {
         if let value = current[key] { return value }
         let value = assessPair(left, right, cache: fileCache)
         current[key] = value
+        return value
+    }
+
+    func assessLegacy(_ left: IndexedFile, _ right: IndexedFile) -> PairAssessment {
+        let key = Clustering.PairKey(min(left.id, right.id), max(left.id, right.id))
+        if let value = legacyCurrent[key] { return value }
+        let value = assessPair(left, right, cache: fileCache, legacy: true)
+        legacyCurrent[key] = value
         return value
     }
 }
@@ -32,12 +41,18 @@ struct ClusterProfile {
     let series: Set<String>
     let tokens: [String: Int]
     let repositories: [String: Int]
+    let sourceCollections: Set<String>
     let centroids: [String: [Double]]
 
     init(core: [IndexedFile], courseCode: String = "", cache: ClusterCache) {
         self.core = core
         self.courseCode = courseCode
         self.series = ClusterMath.sharedSeriesIdentifiers(core)
+        var sharedCollections = core.first.map { ClusterMath.sourceCollections($0.sourceURLs) } ?? []
+        for file in core.dropFirst() {
+            sharedCollections.formIntersection(ClusterMath.sourceCollections(file.sourceURLs))
+        }
+        self.sourceCollections = sharedCollections
         var counts: [String: Int] = [:]
         var repos: [String: Int] = [:]
         var vectors: [String: [[Double]]] = [:]
@@ -70,8 +85,34 @@ struct ClusterProfile {
         guard !assessments.isEmpty, assessments.allSatisfy({ $0.conflicts.isEmpty }) else { return nil }
         let ordered = assessments.map(\.total).sorted(by: >)
         let top = Array(ordered.prefix(3))
-        let score = top.reduce(0, +) / Double(top.count)
-        guard ordered[0] >= threshold, score >= threshold else { return nil }
+        let ordinaryScore = top.reduce(0, +) / Double(top.count)
+        // A verified repository or course offering plus independent native
+        // semantic agreement can rescue chapters whose short identity views
+        // differ. Keep this separate from the ordinary multi-view pair score.
+        let sameCollection = !sourceCollections.isDisjoint(
+            with: ClusterMath.sourceCollections(candidate.sourceURLs))
+        let semanticSupports = core.compactMap { member -> Double? in
+            guard candidate.vectorSpace != nil, candidate.vectorSpace == member.vectorSpace,
+                  ClusterMath.cosine(candidate.vector, member.vector) >= 0.80 else { return nil }
+            let views = ClusterMath.multiView(candidate, member, crossLanguage: false)
+            return views.1 >= 2 ? views.0 : nil
+        }.sorted(by: >)
+        let corroborated: Bool
+        if sameCollection && core.count == 2 && semanticSupports.count == 2 {
+            corroborated = semanticSupports[1] >= 0.60
+                && (semanticSupports[0] + semanticSupports[1]) / 2 >= threshold + 0.04
+        } else {
+            corroborated = sameCollection && semanticSupports.filter { $0 >= 0.65 }.count >= 2
+        }
+        let legacyAssessments = corroborated ? core.map { pairs.assessLegacy(candidate, $0) } : []
+        let legacyOrdered = legacyAssessments.map(\.total).sorted(by: >)
+        let legacyTop = Array(legacyOrdered.prefix(3))
+        let legacyScore = legacyTop.isEmpty ? 0 : legacyTop.reduce(0, +) / Double(legacyTop.count)
+        let anchored = corroborated && (legacyOrdered.first ?? 0) >= threshold
+            && legacyScore >= threshold
+        let score = anchored ? max(ordinaryScore, legacyScore) : ordinaryScore
+        guard max(ordered[0], anchored ? (legacyOrdered.first ?? 0) : 0) >= threshold,
+              score >= threshold else { return nil }
         if core.count == 1 {
             return MembershipAssessment(candidate: candidate, score: score, support: 1,
                                         profileScore: 0, reason: "匹配已确认的单个样本 \(format2(score))")
@@ -82,7 +123,7 @@ struct ClusterProfile {
             .filter { !ClusterMath.genericTokens.contains($0) && !TextFeatures.stopwords.contains($0) }
             .filter { (tokens[$0] ?? 0) >= requiredCoverage }
         let candidateCourse = fileCache.declaredCourse(candidate)
-        let identity = (!courseCode.isEmpty && candidateCourse == courseCode)
+        let identity = anchored || (!courseCode.isEmpty && candidateCourse == courseCode)
             || !fileCache.filenameTokens(candidate).union(fileCache.titleIdentifiers(candidate))
                 .intersection(series).isEmpty
             || !commonWords.isEmpty
@@ -99,8 +140,9 @@ struct ClusterProfile {
         let semantic = native >= 0.82 || pivot >= 0.92
             || (pivot >= 0.88 && sourceClue && withinTime)
         guard identity || semantic else { return nil }
-        let support = assessments.filter { $0.total >= threshold }.count
-        let label = identity ? "共同主题线索" : "多视图语义中心"
+        let support = (anchored ? legacyAssessments : assessments)
+            .filter { $0.total >= threshold }.count
+        let label = anchored ? "同一来源集合与独立语义" : identity ? "共同主题线索" : "多视图语义中心"
         return MembershipAssessment(candidate: candidate, score: score, support: support,
                                     profileScore: max(native, pivot),
                                     reason: "\(label)；\(support)/\(core.count) 个核心成员达到阈值，前三支持均值 \(format2(score))")
@@ -116,8 +158,7 @@ struct ClusterProfile {
             scores.append(ClusterMath.cosine(vector, centroid))
         }
         guard scores.count >= 2 else { return 0 }
-        scores.sort()
-        return scores[scores.count / 2]
+        return ClusterMath.viewMedian(scores)
     }
 
     func evidence(for members: [IndexedFile], expanded: Int) -> [Evidence] {
@@ -132,6 +173,7 @@ struct ClusterProfile {
             .sorted { left, right in
                 left.value != right.value ? left.value > right.value : Py.less(left.key, right.key)
             }.first
+        let fixedCollection = sourceCollections.sorted(by: Py.less).first
         let multi = members.filter {
             $0.nativeViews.values.filter { $0.vector != nil }.count >= 2
                 || $0.pivotViews.values.filter { $0.vector != nil }.count >= 2
@@ -140,10 +182,13 @@ struct ClusterProfile {
             Evidence(kind: "cluster_identity", strength: common.isEmpty ? "none" : "strong",
                      score: coverage,
                      detail: common.isEmpty ? "核心无共同身份词" : "核心共同线索：\(supported)"),
-            Evidence(kind: "cluster_source", strength: commonSource == nil ? "none" : "strong",
-                     score: commonSource.map { Double($0.value) / Double(core.count) } ?? 0,
-                     detail: commonSource.map { "核心共同来源仓库 \($0.key) \($0.value)/\(core.count)" }
-                        ?? "核心无共同来源仓库"),
+            Evidence(kind: "cluster_source",
+                     strength: fixedCollection != nil || commonSource != nil ? "strong" : "none",
+                     score: fixedCollection != nil ? 1
+                        : commonSource.map { Double($0.value) / Double(core.count) } ?? 0,
+                     detail: fixedCollection.map { "固定核心共同来源集合 \($0) \(core.count)/\(core.count)" }
+                        ?? commonSource.map { "核心共同来源仓库 \($0.key) \($0.value)/\(core.count)" }
+                        ?? "核心无共同来源集合"),
             Evidence(kind: "cluster_semantic_views", strength: multi >= 2 ? "strong" : multi > 0 ? "weak" : "none",
                      score: members.isEmpty ? 0 : Double(multi) / Double(members.count),
                      detail: "组内 \(multi)/\(members.count) 个文件具备至少两个有效语义视图"),

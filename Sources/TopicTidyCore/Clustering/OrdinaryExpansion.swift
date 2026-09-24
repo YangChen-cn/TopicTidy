@@ -19,11 +19,18 @@ enum OrdinaryExpansion {
                 let metrics = assessment.metrics
                 let lexical = (metrics["filename_similarity"] ?? 0) >= 0.50
                     || (metrics["content_similarity"] ?? 0) >= 0.40
+                let sharedCollection = !ClusterMath.sourceCollections(left.sourceURLs)
+                    .intersection(ClusterMath.sourceCollections(right.sourceURLs)).isEmpty
+                let nativeViews = ClusterMath.multiView(left, right, crossLanguage: false)
+                let sourceCorroboratedSemantic = sharedCollection
+                    && left.vectorSpace != nil && left.vectorSpace == right.vectorSpace
+                    && ClusterMath.cosine(left.vector, right.vector) >= 0.82
+                    && nativeViews.1 >= 2 && nativeViews.0 >= 0.70
                 let semantic = (metrics["semantic_similarity"] ?? 0) >= 0.82
                     || (metrics["semantic_cross_language"] ?? 0) >= 0.92
+                    || sourceCorroboratedSemantic
                 let source = (metrics["source_url"] ?? 0) >= 0.50
-                    && !ClusterMath.githubRepositories(left.sourceURLs)
-                        .intersection(ClusterMath.githubRepositories(right.sourceURLs)).isEmpty
+                    && sharedCollection
                 if [lexical, semantic, source].filter({ $0 }).count >= 2 { return true }
             }
         }

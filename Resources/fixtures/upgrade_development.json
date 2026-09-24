@@ -14,13 +14,27 @@
     {"name":"ELEC7302 Research Design.md","content":"ELEC7302 ELEC7302 atlas research sensor calibration harbor measurement methods.","vector":[1,0,0]},
     {"name":"ELEC7302 Research Field.md","content":"ELEC7302 ELEC7302 harbor research sensor calibration field measurements.","vector":[1,0,0]},
     {"name":"tax invoice.md","content":"Annual household tax invoice for travel expenses.","source_urls":["https://github.com/acme/atlas/blob/main/research/tax.md"]},
-    {"name":"oven recipe.md","content":"Baking bread dough with oven temperature records.","source_urls":["https://github.com/acme/other/blob/main/research/recipe.md"]}
+    {"name":"oven recipe.md","content":"Baking bread dough with oven temperature records.","source_urls":["https://github.com/acme/other/blob/main/research/recipe.md"]},
+
+    {"name":"Origin Graph Lesson.md","content":"vertex edge traversal adjacency path","vector":[0,1,0],"native_views":{"identity":[1,0],"overview":[1,0],"body":[1,0]},"source_urls":["https://github.com/example/course/blob/main/graph/lesson.md"]},
+    {"name":"Origin Graph Practice.md","content":"breadth first depth first spanning trees","vector":[0,1,0],"native_views":{"identity":[1,0],"overview":[1,0],"body":[1,0]},"source_urls":["https://github.com/example/course/blob/main/graph/practice.md"]},
+    {"name":"Origin Logic Lesson.md","content":"symbolic rules inference proof calculus","vector":[0,1,0],"native_views":{"identity":[0,1],"overview":[0.72,0.693974],"body":[0.8,0.6]},"source_urls":["https://github.com/example/course/blob/main/logic/lesson.md"]},
+    {"name":"Origin Logic Practice.md","content":"predicate reasoning theorem derivation","vector":[0,1,0],"native_views":{"identity":[0,1],"overview":[0.72,0.693974],"body":[0.8,0.6]},"source_urls":["https://github.com/example/course/blob/main/logic/practice.md"]},
+    {"name":"Origin Holiday.md","content":"Vacation hotel booking itinerary","source_urls":["https://github.com/example/course/blob/main/travel/holiday.md"]},
+
+    {"name":"MIT6.006S20 Lec 1.md","content":"MIT algorithms graphs sorting dynamic programming","vector":[0,0,1],"source_urls":["https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-spring-2020/lec1.pdf"]},
+    {"name":"MIT6.006S20 Lec 2.md","content":"MIT algorithms graphs sorting dynamic programming","vector":[0,0,1],"source_urls":["https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-spring-2020/lec2.pdf"]},
+    {"name":"MIT6.046JS15 Lec 1.md","content":"MIT algorithms graphs sorting dynamic programming","vector":[0,0,1],"source_urls":["https://ocw.mit.edu/courses/6-046j-design-and-analysis-of-algorithms-spring-2015/lec1.pdf"]},
+    {"name":"MIT6.046JS15 Lec 2.md","content":"MIT algorithms graphs sorting dynamic programming","vector":[0,0,1],"source_urls":["https://ocw.mit.edu/courses/6-046j-design-and-analysis-of-algorithms-spring-2015/lec2.pdf"]}
   ],
   "expected_clusters": {
     "ELEC7301": ["Atlas Research Design.md","Harbor Research Field.md","Atlas Research Addendum.md"],
     "Multi-view Solar": ["Solar Grid Training One.md","Grid Solar Tutorial Two.md"],
     "Multi-view Battery": ["电池热安全讲义.md","Battery Safety Brief.md"],
-    "ELEC7302": ["ELEC7302 Research Design.md","ELEC7302 Research Field.md"]
+    "ELEC7302": ["ELEC7302 Research Design.md","ELEC7302 Research Field.md"],
+    "Source Anchored Chapters": ["Origin Graph Lesson.md","Origin Graph Practice.md","Origin Logic Lesson.md","Origin Logic Practice.md"],
+    "MIT 6.006": ["MIT6.006S20 Lec 1.md","MIT6.006S20 Lec 2.md"],
+    "MIT 6.046J": ["MIT6.046JS15 Lec 1.md","MIT6.046JS15 Lec 2.md"]
   },
-  "expected_unclassified": ["tax invoice.md","oven recipe.md"]
+  "expected_unclassified": ["tax invoice.md","oven recipe.md","Origin Holiday.md"]
 }

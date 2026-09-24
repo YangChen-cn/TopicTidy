@@ -177,14 +177,33 @@ enum ClusterMath {
             values.append(cosine(vectorA, vectorB))
         }
         guard values.count >= 2 else { return (0, values.count) }
-        values.sort()
-        return (values[values.count / 2], values.count)
+        return (viewMedian(values), values.count)
+    }
+
+    /// With two usable views, both must contribute equally; three views use
+    /// their middle score so a single noisy view cannot dominate the result.
+    static func viewMedian(_ values: [Double]) -> Double {
+        let sorted = values.sorted()
+        let middle = sorted.count / 2
+        return sorted.count.isMultiple(of: 2)
+            ? (sorted[middle - 1] + sorted[middle]) / 2
+            : sorted[middle]
     }
 
     static func sourceScore(_ left: IndexedFile, _ right: IndexedFile, cache: ClusterCache) -> (Double, String) {
         // GitHub and its raw-content host serve unrelated repositories under
         // one domain. Shared words such as README, main, microsoft and lessons
         // must not make two different repositories look like one source.
+        let leftCourses = ocwCourses(left.sourceURLs)
+        let rightCourses = ocwCourses(right.sourceURLs)
+        if !leftCourses.isEmpty && !rightCourses.isEmpty {
+            guard let shared = leftCourses.intersection(rightCourses).sorted(by: Py.less).first else {
+                return (0.15, "MIT OpenCourseWare 课程不同")
+            }
+            let pathSimilarity = jaccard(cache.urlTokens(left), cache.urlTokens(right))
+            return (max(0.60, min(1.0, pathSimilarity + 0.15)),
+                    "共同 MIT OpenCourseWare 课程 \(shared)")
+        }
         let leftRepositories = githubRepositories(left.sourceURLs)
         let rightRepositories = githubRepositories(right.sourceURLs)
         if !leftRepositories.isEmpty && !rightRepositories.isEmpty {
@@ -222,6 +241,27 @@ enum ClusterMath {
             result.insert("\(Py.lower(String(parts[0])))/\(Py.lower(String(parts[1])))")
         }
         return result
+    }
+
+    /// A course URL identifies one OCW offering, unlike the shared host.
+    static func ocwCourses(_ urls: [String]) -> Set<String> {
+        var result: Set<String> = []
+        for url in urls {
+            let parsed = PyURL.parse(url)
+            let host = Py.lower(parsed.netloc).split(separator: ":", maxSplits: 1).first.map(String.init) ?? ""
+            guard host == "ocw.mit.edu" || host == "www.ocw.mit.edu" else { continue }
+            let parts = parsed.path.split(separator: "/")
+            guard parts.count >= 2, Py.lower(String(parts[0])) == "courses" else { continue }
+            let slug = Py.lower(String(parts[1]))
+            guard slug.first?.isNumber == true, slug.contains("-") else { continue }
+            result.insert(slug)
+        }
+        return result
+    }
+
+    static func sourceCollections(_ urls: [String]) -> Set<String> {
+        Set(githubRepositories(urls).map { "github:\($0)" })
+            .union(ocwCourses(urls).map { "ocw:\($0)" })
     }
 
     static func primaryCourse(_ file: IndexedFile) -> String {
@@ -370,6 +410,12 @@ func assessPair(_ left: IndexedFile, _ right: IndexedFile, cache: ClusterCache,
         return PairAssessment(total: 0.0, metrics: metrics, evidence: evidence, conflicts: conflicts)
     }
 
+    let leftOCW = ClusterMath.ocwCourses(left.sourceURLs)
+    let rightOCW = ClusterMath.ocwCourses(right.sourceURLs)
+    if !leftOCW.isEmpty && !rightOCW.isEmpty && leftOCW.isDisjoint(with: rightOCW) {
+        conflicts.append("来源 MIT OpenCourseWare 课程不同")
+        return PairAssessment(total: 0.0, metrics: metrics, evidence: evidence, conflicts: conflicts)
+    }
     let leftRepositories = ClusterMath.githubRepositories(left.sourceURLs)
     let rightRepositories = ClusterMath.githubRepositories(right.sourceURLs)
     if sharedCourse.isEmpty && !leftRepositories.isEmpty && !rightRepositories.isEmpty

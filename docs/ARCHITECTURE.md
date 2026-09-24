@@ -33,7 +33,7 @@ Sources/
 
 `Semantic` 直接在进程内调用 `NLEmbedding.sentenceEmbedding` 与 Apple Translation：`SemanticText` 生成最多约 2400 字符的代表性文本（标题/摘要/关键词 + 正文前中后采样），`NativeMacOSEncoder` 分块采样后做归一化平均，`Pivot` 只对候选文件补 English pivot，`NativeTranslationBackend` 只使用已安装语言资产，绝不请求下载。语义 backend 版本号因此从 `apple-nlembedding:<系统版本>:<helper 源码摘要>` 变为 `...:native`，旧缓存向量会在下一次 propose 时自动重算。
 
-`Clustering` 先用 complete-link 建立紧密核心，再用冻结的组画像做受约束扩张。课程号冲突和不同 GitHub 仓库仍是硬负证据；正文课程号需要两个独立文件才升级为强证据；Markdown 链接集合不做传递扩张；generic filename token 不参与 overlap 放大。`ClusterCache` 只缓存单文件派生值，`PairAssessmentCache` 仅活在一次 proposal 内。建议资格与自动整理资格分别计算，后者要求旧算法也形成相同的完整成员组。升级的边界、测试与数据见 [CLUSTERING_UPGRADE.md](CLUSTERING_UPGRADE.md)，先前 110 文件实测见 [REAL_WORLD_110_EVALUATION.md](REAL_WORLD_110_EVALUATION.md)。
+`Clustering` 先用 complete-link 建立紧密核心，再用冻结的组画像做受约束扩张。课程号冲突、不同 GitHub 仓库和不同 MIT OCW 课程路径是硬负证据；同一明确来源集合要有综合向量与多个原生视图佐证，才能补强异质章节的核心支持。正文课程号需要两个独立文件才升级为强证据；Markdown 链接集合不做传递扩张；generic filename token 不参与 overlap 放大。`ClusterCache` 只缓存单文件派生值，`PairAssessmentCache` 仅活在一次 proposal 内。建议资格与自动整理资格分别计算，后者要求旧算法也形成相同的完整成员组。升级的边界、测试与数据见 [CLUSTERING_UPGRADE.md](CLUSTERING_UPGRADE.md)，真实课件复测见 [REAL_WORLD_118_EVALUATION.md](REAL_WORLD_118_EVALUATION.md)。
 
 `Operations` 负责预览、移动、日志恢复和撤销；`Workflow` 组合建议与自动确认；`AppService` 是 GUI 与测试共用的请求/响应门面（原 `gui_bridge.py` 的逻辑，现在进程内）。`Locking` 用 `flock(2)` 保证 CLI、GUI 和每日任务互斥。`Scheduler` 只维护 LaunchAgent，命令指向原生二进制（应用内为 `Contents/Resources/tt`，否则为当前 `tt`）。
 

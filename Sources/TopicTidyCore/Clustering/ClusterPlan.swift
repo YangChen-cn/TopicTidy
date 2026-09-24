@@ -485,7 +485,12 @@ public enum ClusterEngine {
                 "INSERT INTO plans(created_at,status,config_json) VALUES(?, 'draft', ?)",
                 [now, JSONValue.dumps([
                     "cluster_threshold": settings.clusterThreshold,
-                    "algorithm_version": "strong-seed-multiview:1",
+                    "algorithm_version": "strong-seed-multiview:3",
+                    "multiview_aggregation": "mean-of-two-median-of-three",
+                    "source_anchor_min_comprehensive": 0.80,
+                    "source_anchor_two_core_min_view": 0.60,
+                    "source_anchor_two_core_mean_delta": 0.04,
+                    "source_anchor_larger_core_min_view": 0.65,
                     "ambiguity_margin": 0.08,
                     "translation_character_budget": 57_600,
                     "cross_language_candidate_neighbors": settings.crossLanguageCandidateNeighbors,
