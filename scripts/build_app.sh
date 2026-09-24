@@ -6,9 +6,14 @@
 #
 # Usage: scripts/build_app.sh [--identity NAME] [--version X.Y.Z]
 #                            [--skip-build] [--bin-dir DIR] [--app-only]
+#                            [--allow-local-release]
 #
 # --skip-build reuses binaries that are already compiled (CI builds them once);
 # --bin-dir points at them explicitly. Without either flag the script builds.
+#
+# The DMG is a release artefact and the release workflow owns it, so a local run
+# without --app-only is refused unless --allow-local-release says the packaging
+# pipeline itself is what is being tested. See the gate below.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,6 +24,7 @@ IDENTITY=""
 BIN_DIR=""
 SKIP_BUILD=0
 APP_ONLY=0
+ALLOW_LOCAL_RELEASE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --identity) IDENTITY="$2"; shift 2 ;;
@@ -26,9 +32,21 @@ while [ $# -gt 0 ]; do
     --skip-build) SKIP_BUILD=1; shift ;;
     --app-only) APP_ONLY=1; shift ;;
     --bin-dir) BIN_DIR="$2"; SKIP_BUILD=1; shift 2 ;;
+    --allow-local-release) ALLOW_LOCAL_RELEASE=1; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
+
+# A local DMG can never be published: the release workflow builds the artefacts
+# from the tag and the tap pins those exact bytes, while a local tar/DMG embeds
+# different timestamps. Packaging one by accident only leaves files in dist/ that
+# look like a release and are not one.
+if [ "$APP_ONLY" = 0 ] && [ "$ALLOW_LOCAL_RELEASE" = 0 ] && [ "${GITHUB_ACTIONS:-}" != "true" ]; then
+  echo "refusing to package a DMG outside CI: the release workflow owns release artefacts." >&2
+  echo "  local acceptance build:  scripts/build_app.sh --app-only" >&2
+  echo "  testing the packaging:   scripts/build_app.sh --allow-local-release" >&2
+  exit 2
+fi
 # shellcheck source=scripts/lib/identity.sh
 . "$ROOT/scripts/lib/identity.sh"
 REQUESTED_IDENTITY="$IDENTITY"
@@ -136,6 +154,17 @@ rm -rf "$DIST/TopicTidy.app"
 cp -R "$APP" "$DIST/TopicTidy.app"
 
 if [ "$APP_ONLY" = 1 ]; then
+  # An acceptance build must not leave anything that looks like a release
+  # artefact behind: those come from the release workflow, and keeping stale
+  # copies here only invites installing or publishing the wrong bytes.
+  for stale in "$DIST"/TopicTidy-*-arm64.dmg \
+               "$DIST"/topictidy-cli-*-arm64.tar.gz \
+               "$DIST"/TopicTidy-*-size-report.json \
+               "$DIST"/SHA256SUMS.txt; do
+    [ -e "$stale" ] || continue
+    rm -f "$stale"
+    echo "==> removed stale $(basename "$stale")"
+  done
   echo "APP: $DIST/TopicTidy.app"
   exit 0
 fi

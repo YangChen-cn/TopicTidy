@@ -170,8 +170,8 @@ swift test             # 扫描、提取、聚类、操作、自动化与 GUI �
 .build/debug/tt benchmark Resources/fixtures/holdout_unseen.json
 .build/debug/tt benchmark Resources/fixtures/upgrade_development.json
 .build/debug/tt benchmark Resources/fixtures/upgrade_holdout.json
-scripts/build_app.sh --app-only # 本地签名 .app，供 GUI 手动验收
-scripts/build_app.sh   # 用户明确要求发布时才生成签名 .app 与 DMG
+scripts/build_app.sh --app-only # 本地签名 .app，供 GUI 手动验收（顺带清掉 dist 里过期的发布产物）
+scripts/build_app.sh --allow-local-release # 本地也会打 DMG，仅用于验证打包流程本身
 scripts/package_cli.sh # 生成 CLI 压缩包
 scripts/package_cli.sh --skip-build # 复用已编译的 tt 打包 CLI
 scripts/generate_release_notes.sh   # 生成 Release Notes（tag 区间 commit）
