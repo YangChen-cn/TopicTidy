@@ -27,13 +27,7 @@ TopicTidy 把散落在下载目录里的同一课程、项目或主题文件放�
 
 ![118 文件隔离扫描的主题建议概览](docs/images/118-file-demo.svg)
 
-<p align="center"><img src="docs/images/118-file-overview.png" width="760" alt="TopicTidy 原生窗口展示 118 文件的主题建议和文件列表"></p>
-
-<p align="center"><sub>真实窗口：118 个文件的建议总览。截图使用隔离测试目录；没有执行确认或移动。</sub></p>
-
-| 扫描 | 建议主题 | 留待人工判断 |
-| ---: | ---: | ---: |
-| 118 个文件 | 17 个主题、94 个文件 | 24 个未分类文件 |
+![UI](docs/images/UI.png)
 
 包含真实课程课件及项目资料。不同章节的课件可以归入同一课程；依据不足的文件保留原位。评估方法和逐主题结果见 [118 文件复测](docs/REAL_WORLD_118_EVALUATION.md)。
 
